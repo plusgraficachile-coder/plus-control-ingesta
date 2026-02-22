@@ -1,0 +1,11 @@
+Nro;Tipo Doc;Tipo Compra;RUT Proveedor;Razon Social;Folio;Fecha Docto;Fecha Recepcion;Fecha Acuse;Monto Exento;Monto Neto;Monto IVA Recuperable;Monto Iva No Recuperable;Codigo IVA No Rec.;Monto Total;Monto Neto Activo Fijo;IVA Activo Fijo;IVA uso Comun;Impto. Sin Derecho a Credito;IVA No Retenido;Tabacos Puros;Tabacos Cigarrillos;Tabacos Elaborados;NCE o NDE sobre Fact. de Compra;Codigo Otro Impuesto;Valor Otro Impuesto;Tasa Otro Impuesto
+1;33;Del Giro;10327083-9;ALFONSO JAVIER SAEZ LOBOS;16365;15/01/2026;15/01/2026 10:26:04;;0;17226;3273;;;20499;;;;;0;;;;0;;;;
+2;33;Del Giro;85655500-3;DISTRIBUIDORA FURET LTDA.;266728;15/01/2026;15/01/2026 11:21:07;;0;18184;3455;;;21639;;;;;0;;;;0;;;;
+3;33;Del Giro;96511460-2;Construmart S.A.;22354760;16/01/2026;16/01/2026 11:34:22;;0;24126;4584;;;28710;;;;;0;;;;0;;;;
+4;33;Del Giro;76094084-4;Distribuidora de Productos Graficos Mas SpA;214196;19/01/2026;19/01/2026 12:18:03;;0;29200;5548;;;34748;;;;;0;;;;0;;;;
+5;33;Del Giro;76740200-7;GUILLERMO ALBERTO GONZALEZ LIMITADA;148904;19/01/2026;19/01/2026 12:29:05;;0;18404;3497;;;21901;;;;;0;;;;0;;;;
+6;33;Del Giro;96511460-2;Construmart S.A.;22381271;19/01/2026;19/01/2026 12:57:33;;0;23933;4547;;;28480;;;;;0;;;;0;;;;
+7;33;Del Giro;96792430-K;SODIMAC S.A.;144998713;23/01/2026;23/01/2026 17:49:08;;0;2504;476;;;2980;;;;;0;;;;0;;;;
+8;33;Del Giro;76821330-5;IMPERIAL S.A.;19942038;27/01/2026;27/01/2026 18:07:29;;0;13008;2472;;;15480;;;;;0;;;;0;;;;
+9;33;Del Giro;96792430-K;SODIMAC S.A.;144836281;27/01/2026;27/01/2026 18:31:03;;0;30865;5864;;;36729;;;;;0;;;;0;;;;
+10;33;Del Giro;11802753-1;RUBEN IVAN CARO;40336;28/01/2026;28/01/2026 15:02:04;;0;5874;1116;;;6990;;;;;0;;;;0;;;;
