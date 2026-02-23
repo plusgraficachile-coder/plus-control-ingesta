@@ -1,14 +1,14 @@
 {
   "name": "plus-control-ingesta",
   "version": "1.0.0",
-  "description": "Ingesta MP",
+  "description": "Ingesta Automatica Mercado Publico",
   "main": "ingest-mp.js",
   "scripts": {
     "start": "node ingest-mp.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
     "axios": "^1.6.0",
+    "@supabase/supabase-js": "^2.39.0",
     "dotenv": "^16.3.1"
   }
 }
