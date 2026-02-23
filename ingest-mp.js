@@ -2,11 +2,14 @@
 
 /**
  * PLUS CONTROL - Motor de Ingesta Mercado Público
- * Arquitectura: 4 Niveles (Cerebro)
+ * 
+ * Objetivo: Capturar licitaciones adjudicadas en La Araucanía
+ * Ejecuta: Diariamente a las 09:00 AM Chile (12:00 UTC)
+ * Autor: Plus Gráfica
  */
 
-const axios = require('axios'); // Import require para Node.js estándar
-const { createClient } = require('@supabase/supabase-js');
+import axios from 'axios';
+import { createClient } from '@supabase/supabase-js';
 
 // ============================================================
 // CONFIGURACIÓN
@@ -14,26 +17,19 @@ const { createClient } = require('@supabase/supabase-js');
 
 const CONFIG = {
   SUPABASE_URL: process.env.SUPABASE_URL,
-  // CORRECCIÓN: Ajustado para coincidir con el Secret de GitHub
-  SUPABASE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY, 
-  MP_TICKET: process.env.MP_TICKET, // ¡Necesitas agregar este Secret!
+  SUPABASE_KEY: process.env.SUPABASE_SERVICE_KEY,
+  MP_TICKET: process.env.MP_TICKET,
   MP_BASE_URL: 'https://api.mercadopublico.cl/servicios/v1/publico',
   REGION_CODIGO: '9',        // Araucanía
   MONTO_MINIMO: 500000,      // $500k
-  DIAS_ATRAS: 1,             // Ajustado a 1 para prueba rápida (puedes subirlo luego)
-  SIGNAL_SCORE: 50
+  DIAS_ATRAS: 3,             // Buscar últimos 3 días
+  SIGNAL_SCORE: 50           // Score inicial por licitación
 };
 
 // Validar variables de entorno
-if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY) {
-  console.error('❌ ERROR: Faltan llaves de Supabase (URL o SERVICE_ROLE_KEY)');
-  process.exit(1);
-}
-
-// Nota: Si no tienes MP_TICKET aún, el script fallará aquí.
-// Si quieres probar sin ticket (solo validación de flujo), comenta estas líneas temporalmente:
-if (!CONFIG.MP_TICKET) {
-  console.error('❌ ERROR: Falta MP_TICKET en Secrets');
+if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY || !CONFIG.MP_TICKET) {
+  console.error('❌ ERROR: Variables de entorno faltantes');
+  console.error('Requeridas: SUPABASE_URL, SUPABASE_SERVICE_KEY, MP_TICKET');
   process.exit(1);
 }
 
@@ -46,18 +42,31 @@ const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, {
 // UTILIDADES
 // ============================================================
 
+/**
+ * Normalizar RUT chileno
+ * @param {string} rutRaw - RUT en cualquier formato
+ * @returns {string|null} RUT normalizado (12345678-9)
+ */
 function normalizeRut(rutRaw) {
   if (!rutRaw) return null;
+  
   let clean = rutRaw.replace(/[.\s]/g, '').trim().toUpperCase();
   if (clean.length < 7) return null;
+  
   if (!clean.includes('-')) {
     const dv = clean.slice(-1);
     const cuerpo = clean.slice(0, -1);
     clean = `${cuerpo}-${dv}`;
   }
+  
   return clean;
 }
 
+/**
+ * Formatear fecha para API de Mercado Público
+ * @param {Date} date 
+ * @returns {string} DDMMYYYY
+ */
 function formatDateForMP(date) {
   const dd = String(date.getDate()).padStart(2, '0');
   const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -65,9 +74,19 @@ function formatDateForMP(date) {
   return `${dd}${mm}${yyyy}`;
 }
 
+/**
+ * Logger con timestamp
+ */
 function log(level, message, data = null) {
   const timestamp = new Date().toISOString();
-  const icons = { info: '📋', success: '✅', warning: '⚠️', error: '❌', debug: '🔍' };
+  const icons = {
+    info: '📋',
+    success: '✅',
+    warning: '⚠️',
+    error: '❌',
+    debug: '🔍'
+  };
+  
   console.log(`${icons[level] || 'ℹ️'} [${timestamp}] ${message}`);
   if (data) console.log(JSON.stringify(data, null, 2));
 }
@@ -76,6 +95,9 @@ function log(level, message, data = null) {
 // FUNCIONES DE NEGOCIO
 // ============================================================
 
+/**
+ * Obtener o crear Signal Type
+ */
 async function getOrCreateSignalType() {
   try {
     const { data: existing, error: readError } = await supabase
@@ -85,53 +107,92 @@ async function getOrCreateSignalType() {
       .maybeSingle();
     
     if (readError) throw readError;
-    if (existing) return existing.id;
+    
+    if (existing) {
+      log('debug', 'Signal type encontrado', { id: existing.id });
+      return existing.id;
+    }
     
     const { data: created, error: createError } = await supabase
       .from('signal_types')
       .insert({
         name: 'orden_compra_araucania',
         source: 'MercadoPublico',
-        base_weight: 50,
+        base_weight: 50, // Score base desde signal_types (fuente única)
         category: 'financial_trigger'
       })
       .select('id')
       .single();
     
     if (createError) throw createError;
+    
+    log('success', 'Signal type creado', { id: created.id });
     return created.id;
+    
   } catch (error) {
     log('error', 'Error en getOrCreateSignalType', { error: error.message });
     throw error;
   }
 }
 
+/**
+ * UPSERT de organización (idempotente)
+ * @param {Object} orgData - Datos de la organización
+ * @returns {string|null} ID de la organización
+ */
 async function upsertOrganization(orgData) {
   try {
     const rutNorm = normalizeRut(orgData.rut);
-    if (!rutNorm) return null;
     
-    // Upsert directo para eficiencia
-    const { data, error } = await supabase
+    if (!rutNorm) {
+      log('warning', `RUT inválido: ${orgData.rut}`);
+      return null;
+    }
+    
+    // Intentar buscar existente
+    const { data: existing, error: readError } = await supabase
       .from('organizations')
-      .upsert({
+      .select('id, razon_social')
+      .eq('rut', rutNorm)
+      .maybeSingle();
+    
+    if (readError) throw readError;
+    
+    if (existing) {
+      log('debug', `Org existente: ${existing.razon_social}`);
+      return existing.id;
+    }
+    
+    // Crear nueva
+    const { data: created, error: createError } = await supabase
+      .from('organizations')
+      .insert({
         rut: rutNorm,
         razon_social: orgData.razon_social,
         region: 'Araucanía',
         status: 'lead_frio',
-        updated_at: new Date()
-      }, { onConflict: 'rut' })
-      .select('id')
+        contact_info: {}
+      })
+      .select('id, razon_social')
       .single();
-
-    if (error) throw error;
-    return data.id;
+    
+    if (createError) throw createError;
+    
+    log('success', `Nueva org: ${created.razon_social}`);
+    return created.id;
+    
   } catch (error) {
-    log('error', 'Error en upsertOrganization', { error: error.message });
+    log('error', 'Error en upsertOrganization', { 
+      error: error.message, 
+      rut: orgData.rut 
+    });
     return null;
   }
 }
 
+/**
+ * Crear señal (idempotente por external_code)
+ */
 async function createSignal(orgId, signalTypeId, externalCode, rawData) {
   try {
     const { error } = await supabase
@@ -144,32 +205,127 @@ async function createSignal(orgId, signalTypeId, externalCode, rawData) {
       });
     
     if (error) {
-      if (error.code === '23505') return false; // Duplicado
+      // Error 23505 = duplicate key (constraint unique)
+      if (error.code === '23505') {
+        log('debug', 'Señal ya existe (idempotencia)');
+        return false; // No es error, solo ya existía
+      }
       throw error;
     }
+    
     return true;
+    
   } catch (error) {
     log('error', 'Error creando señal', { error: error.message });
     return false;
   }
 }
 
+/**
+ * Obtener órdenes de compra de Mercado Público (con retry)
+ */
 async function fetchOrdenesCompra(fecha, retries = 3) {
+  let lastError = null;
+  
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const url = `${CONFIG.MP_BASE_URL}/ordenesdecompra.json`;
-      const params = { fecha: formatDateForMP(fecha), ticket: CONFIG.MP_TICKET };
+      const params = {
+        fecha: formatDateForMP(fecha),
+        ticket: CONFIG.MP_TICKET
+      };
       
-      log('info', `Consultando MP: ${formatDateForMP(fecha)} (Intento ${attempt})`);
-      const response = await axios.get(url, { params, timeout: 30000 });
-      return response.data?.Listado || [];
+      log('info', `Consultando MP: ${formatDateForMP(fecha)} (intento ${attempt}/${retries})`);
+      
+      const response = await axios.get(url, { 
+        params,
+        timeout: 30000
+      });
+      
+      const ordenes = response.data?.Listado || [];
+      log('success', `Órdenes encontradas: ${ordenes.length}`);
+      
+      return ordenes;
+      
     } catch (error) {
-      if (attempt === retries) {
-        log('error', `Fallo final consultando MP: ${error.message}`);
-        return [];
+      lastError = error;
+      
+      if (error.response) {
+        log('warning', `API MP Error ${error.response.status} (intento ${attempt}/${retries})`, {
+          status: error.response.status,
+          data: error.response.data
+        });
+      } else {
+        log('warning', `Request Error (intento ${attempt}/${retries}): ${error.message}`);
       }
-      await new Promise(r => setTimeout(r, 2000 * attempt));
+      
+      // Si es el último intento, no esperar
+      if (attempt < retries) {
+        const waitTime = attempt * 2000; // Backoff: 2s, 4s, 6s
+        log('info', `Esperando ${waitTime/1000}s antes de reintentar...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
     }
+  }
+  
+  // Si llegamos aquí, todos los reintentos fallaron
+  log('error', `Todos los reintentos fallaron para ${formatDateForMP(fecha)}`);
+  return [];
+}
+
+/**
+ * Procesar una orden de compra
+ */
+async function procesarOrden(orden, signalTypeId) {
+  try {
+    // Filtro 1: Monto mínimo
+    const monto = parseFloat(orden.Total) || 0;
+    if (monto < CONFIG.MONTO_MINIMO) {
+      return { procesada: false, motivo: 'monto_bajo' };
+    }
+    
+    // Filtro 2: Región Araucanía
+    const region = orden.Region || '';
+    if (!region.toLowerCase().includes('araucan')) {
+      return { procesada: false, motivo: 'region_incorrecta' };
+    }
+    
+    // UPSERT organización
+    const orgId = await upsertOrganization({
+      rut: orden.RutProveedor,
+      razon_social: orden.NombreProveedor || 'Sin nombre'
+    });
+    
+    if (!orgId) {
+      return { procesada: false, motivo: 'error_org' };
+    }
+    
+    // Crear señal (idempotente)
+    const externalCode = `MP-OC-${orden.Codigo}`;
+    const rawData = {
+      codigo: orden.Codigo,
+      monto: monto,
+      comprador: orden.NombreOrganismo,
+      fecha: orden.Fecha,
+      estado: orden.Estado,
+      link: `https://www.mercadopublico.cl/PurchaseOrder/Modules/PO/DetailsPurchaseOrder.aspx?codigoOC=${orden.Codigo}`
+    };
+    
+    const created = await createSignal(orgId, signalTypeId, externalCode, rawData);
+    
+    if (created) {
+      log('success', `Procesada: ${orden.NombreProveedor} - $${monto.toLocaleString('es-CL')}`);
+    }
+    
+    return { 
+      procesada: true, 
+      creada: created,
+      monto: monto
+    };
+    
+  } catch (error) {
+    log('error', 'Error procesando orden', { error: error.message });
+    return { procesada: false, motivo: 'error_fatal' };
   }
 }
 
@@ -178,70 +334,126 @@ async function fetchOrdenesCompra(fecha, retries = 3) {
 // ============================================================
 
 async function main() {
+  const startTime = Date.now();
   let lockAcquired = false;
-  log('info', '🚀 INICIANDO INGESTA PLUS CONTROL');
-
+  
+  log('info', '🚀 INICIANDO INGESTA MERCADO PÚBLICO');
+  log('info', `Región: Araucanía | Monto mínimo: $${CONFIG.MONTO_MINIMO.toLocaleString('es-CL')}`);
+  
   try {
-    // 1. Lock Distribuido (Protección de concurrencia)
-    // Si la función RPC no existe aún en tu DB, esto fallará.
-    // Si falla, comenta el bloque de lock para probar la lógica simple.
-    try {
-        const { data: acquired, error: lockError } = await supabase.rpc('acquire_mp_lock');
-        if (lockError) throw lockError;
-        if (!acquired) {
-            log('warning', '⏳ Lock ocupado. Ejecución omitida.');
-            process.exit(0);
-        }
-        lockAcquired = true;
-    } catch (e) {
-        log('warning', '⚠️ No se pudo adquirir Lock (¿Existe la función RPC?). Continuando sin lock por ahora...');
+    // 1. Verificar conexión Supabase
+    log('info', 'Verificando conexión Supabase...');
+    const { error: testError } = await supabase
+      .from('organizations')
+      .select('count')
+      .limit(1);
+    
+    if (testError) {
+      throw new Error(`Error Supabase: ${testError.message}`);
     }
-
+    log('success', 'Supabase conectado');
+    
+    // 2. Adquirir lock
+    log('info', 'Adquiriendo lock...');
+    const { data: acquired, error: lockError } = await supabase.rpc('acquire_mp_lock');
+    
+    if (lockError) {
+      throw new Error(`Error adquiriendo lock: ${lockError.message}`);
+    }
+    
+    if (!acquired) {
+      log('warning', 'Otra instancia ya está ejecutándose. Saliendo.');
+      process.exit(0); // No es error, solo concurrencia
+    }
+    
+    lockAcquired = true;
+    log('success', 'Lock adquirido');
+    
+    // 3. Obtener Signal Type
     const signalTypeId = await getOrCreateSignalType();
-    let procesados = 0;
-
-    // Buscar en el pasado
+    
+    // 3. Procesar últimos N días
+    let stats = {
+      ordenes_totales: 0,
+      ordenes_procesadas: 0,
+      senales_creadas: 0,
+      senales_duplicadas: 0,
+      montos_total: 0,
+      errores: 0
+    };
+    
     for (let i = 0; i < CONFIG.DIAS_ATRAS; i++) {
       const fecha = new Date();
       fecha.setDate(fecha.getDate() - i);
       
       const ordenes = await fetchOrdenesCompra(fecha);
+      stats.ordenes_totales += ordenes.length;
       
       for (const orden of ordenes) {
-        const monto = parseFloat(orden.Total) || 0;
-        const region = orden.Comprador?.Region || '';
-
-        // Filtros de Negocio
-        if (monto >= CONFIG.MONTO_MINIMO && region.toUpperCase().includes('ARAUCAN')) {
-            const orgId = await upsertOrganization({
-                rut: orden.Comprador.RutUnidad, // O RutProveedor según corresponda
-                razon_social: orden.Comprador.NombreOrganismo
-            });
-
-            if (orgId) {
-                const created = await createSignal(
-                    orgId, 
-                    signalTypeId, 
-                    `MP-${orden.Codigo}`, 
-                    orden
-                );
-                if (created) {
-                    log('success', `💰 Lead Capturado: ${orden.Codigo} ($${monto})`);
-                    procesados++;
-                }
-            }
+        const resultado = await procesarOrden(orden, signalTypeId);
+        
+        if (resultado.procesada) {
+          stats.ordenes_procesadas++;
+          if (resultado.creada) {
+            stats.senales_creadas++;
+            stats.montos_total += resultado.monto || 0;
+          } else {
+            stats.senales_duplicadas++; // Ya existía
+          }
+        } else {
+          stats.errores++;
         }
       }
     }
-
-    log('success', `🏁 Fin del proceso. Leads nuevos: ${procesados}`);
-
+    
+    // 4. Obtener top leads
+    const { data: hotLeads } = await supabase
+      .from('hot_leads')
+      .select('razon_social, hot_score, total_signals')
+      .limit(10);
+    
+    // 5. Reporte final
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    
+    log('info', '═══════════════════════════════════════');
+    log('success', 'INGESTA COMPLETADA');
+    log('info', `Duración: ${duration}s`);
+    log('info', `Órdenes consultadas: ${stats.ordenes_totales}`);
+    log('info', `Órdenes procesadas: ${stats.ordenes_procesadas}`);
+    log('info', `Señales creadas: ${stats.senales_creadas}`);
+    log('info', `Señales duplicadas: ${stats.senales_duplicadas}`);
+    log('info', `Errores: ${stats.errores}`);
+    log('info', `Monto total: $${stats.montos_total.toLocaleString('es-CL')}`);
+    log('info', '═══════════════════════════════════════');
+    
+    if (hotLeads && hotLeads.length > 0) {
+      log('info', '\n🔥 TOP 10 HOT LEADS:');
+      log('info', '─────────────────────────────────────────');
+      hotLeads.forEach((lead, i) => {
+        console.log(`${i + 1}. ${lead.razon_social}`);
+        console.log(`   Score: ${lead.hot_score} | Señales: ${lead.total_signals}`);
+      });
+    }
+    
+    process.exit(0);
+    
   } catch (error) {
-    log('error', '🔥 Error Fatal:', error);
+    log('error', 'ERROR FATAL', { 
+      error: error.message,
+      stack: error.stack 
+    });
     process.exit(1);
   } finally {
-    if (lockAcquired) await supabase.rpc('release_mp_lock');
+    // Liberar lock SIEMPRE (éxito o error) con trazabilidad
+    if (lockAcquired) {
+      try {
+        log('info', '🔓 Intentando liberar lock...');
+        await supabase.rpc('release_mp_lock');
+        log('success', '✅ Lock liberado correctamente');
+      } catch (releaseError) {
+        log('error', '❌ Error crítico liberando lock', { error: releaseError.message });
+        // No hacemos exit(1) aquí para no ocultar el éxito del proceso principal si lo hubo
+      }
+    }
   }
 }
-
-main();
