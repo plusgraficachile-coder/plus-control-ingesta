@@ -1,0 +1,64 @@
+name: Ingesta Mercado Público
+
+on:
+  schedule:
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    name: Capturar leads
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Instalar dependencias
+        run: npm ci
+      
+      - name: Ejecutar ingesta
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MP_TICKET: ${{ secrets.MP_TICKET }}
+        run: npm run ingest
+```
+
+4. Click: **Commit new file**
+
+---
+
+### **PASO 3: Verificar scripts/ingest-mp.js (1 min)**
+
+Click en: **scripts/** → Debe tener `ingest-mp.js`
+
+Si NO existe o está corrupto → Bórralo y créalo con el código limpio que te di arriba.
+
+---
+
+### **PASO 4: Run workflow (1 min)**
+
+1. Ve a: **Actions**
+2. Deberías ver: **"Ingesta Mercado Público"**
+3. Click: **"Run workflow"**
+4. Click: **"Run workflow"** (confirmar)
+
+---
+
+## 📋 **ESTRUCTURA FINAL:**
+```
+plus-control-ingesta/
+├── .github/
+│   └── workflows/
+│       └── ingest.yml      ← CREAR ESTE
+├── scripts/
+│   └── ingest-mp.js        ← Ya existe
+├── package.json            ← CREAR ESTE
+└── README                  ← Ya existe
