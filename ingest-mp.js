@@ -21,7 +21,7 @@ const CONFIG = {
   MP_BASE_URL: 'https://api.mercadopublico.cl/servicios/v1/publico',
   REGION_TARGET: 'ARAUCAN',
   MONTO_MINIMO: 500000,
-  DIAS_ATRAS: 3
+  DIAS_ATRAS: 30
 };
 
 if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY || !CONFIG.MP_TICKET) {
