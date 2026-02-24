@@ -1,9 +1,8 @@
 {
   "name": "plus-control-ingesta",
   "version": "1.0.0",
-  "type": "module",
   "scripts": {
-    "ingest": "node scripts/ingest-mp.js"
+    "ingest": "node ingest-mp.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
