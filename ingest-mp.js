@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /**
- * DIAGNÓSTICO V2 - LICITACIONES (OPORTUNIDADES)
- * Objetivo: Ver si la lista de Licitaciones trae Región/Monto
+ * DIAGNÓSTICO V3 - PRUEBA DE RESILIENCIA
+ * Objetivo: Encontrar un endpoint de Licitaciones que NO devuelva Error 500.
  */
 const axios = require('axios');
 
 const CONFIG = {
   MP_TICKET: process.env.MP_TICKET,
-  // CAMBIO CLAVE: Ahora miramos el futuro (Licitaciones), no el pasado.
   API_URL: 'https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json'
 };
 
@@ -20,55 +19,47 @@ function formatDate(date) {
   return `${dd}${mm}${yyyy}`;
 }
 
-async function main() {
-  console.log("🕵️ INICIANDO DIAGNÓSTICO DE LICITACIONES...");
+async function testEndpoint(name, params) {
+  console.log(`\n🧪 PROBANDO: ${name}`);
+  console.log(`   Params: ${JSON.stringify(params)}`);
   
-  // Probamos con AYER (para asegurar datos)
-  const date = new Date();
-  date.setDate(date.getDate() - 1); 
-  
-  const params = { fecha: formatDate(date), ticket: CONFIG.MP_TICKET };
-  console.log(`📡 Consultando Licitaciones para: ${params.fecha}`);
-
   try {
-    const res = await axios.get(CONFIG.API_URL, { params, timeout: 30000 });
-    const listado = res.data?.Listado || [];
+    const res = await axios.get(CONFIG.API_URL, { 
+      params: { ...params, ticket: CONFIG.MP_TICKET },
+      timeout: 10000 
+    });
     
-    console.log(`📊 Encontradas: ${listado.length} licitaciones disponibles.`);
-
-    if (listado.length > 0) {
-        const primera = listado[0];
-        console.log("\n📦 QUE TRAE LA LISTA (Resumen):");
-        console.log(`   - Código: ${primera.CodigoExternal}`);
-        console.log(`   - Nombre: ${primera.Nombre}`);
-        // Verificamos si estos campos existen en la lista simple
-        console.log(`   - ¿Trae Región?: ${JSON.stringify(primera).includes('Region') ? 'SÍ' : 'NO'}`);
-        console.log(`   - ¿Trae Monto?: ${primera.MontoEstimado !== undefined ? 'SÍ' : 'NO'}`);
-        
-        // PRUEBA DE PROFUNDIDAD: Consultamos el detalle de la primera licitación
-        // para ver si ahí SÍ aparece la región.
-        if (primera.CodigoExternal) {
-            console.log(`\n🔬 PROFUNDIZANDO: Consultando detalle de ${primera.CodigoExternal}...`);
-            const urlDetalle = `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json`;
-            const resDetalle = await axios.get(urlDetalle, { 
-                params: { codigo: primera.CodigoExternal, ticket: CONFIG.MP_TICKET } 
-            });
-            
-            const detalle = resDetalle.data?.Listado?.[0];
-            if (detalle) {
-                console.log("✅ ¡DETALLE OBTENIDO!");
-                console.log(`   - Región Real: ${detalle.Comprador?.Region}`);
-                console.log(`   - Comuna: ${detalle.Comprador?.Comuna}`);
-                console.log(`   - Monto: ${detalle.MontoEstimado}`);
-            }
-        }
-    } else {
-        console.log("⚠️ La lista llegó vacía (pero el ticket funciona).");
+    const count = res.data?.Listado?.length || 0;
+    console.log(`   ✅ ÉXITO: Status 200 | Resultados: ${count}`);
+    
+    if (count > 0) {
+      const sample = res.data.Listado[0];
+      console.log(`   🔎 Muestra: ${sample.CodigoExternal} | ${sample.Nombre.substring(0, 40)}...`);
+      // Chequeo rápido de campos
+      console.log(`      ¿Tiene Región?: ${JSON.stringify(sample).includes('Region') ? 'SÍ' : 'NO'}`);
     }
+    return true;
 
   } catch (e) {
-    console.error(`🔥 ERROR: ${e.message}`);
+    console.log(`   ❌ FALLO: ${e.message}`);
+    if (e.response) console.log(`      Server dice: ${e.response.status} - ${e.response.statusText}`);
+    return false;
   }
+}
+
+async function main() {
+  console.log("🕵️ INICIANDO TEST DE PUERTAS TRASERAS...");
+
+  // PRUEBA 1: Fecha de HOY (Tal vez ayer estaba corrupto)
+  const today = new Date();
+  await testEndpoint("Consulta por Fecha (HOY)", { fecha: formatDate(today) });
+
+  // PRUEBA 2: Por Estado PUBLICADA (Código 5) -> Esta es nuestra esperanza
+  // Nota: A veces el param es 'estado', a veces 'Estado'. Probamos minúscula estándar.
+  await testEndpoint("Consulta por Estado (Publicada - 5)", { estado: '5' });
+
+  // PRUEBA 3: Por Estado ADJUDICADA (Código 8)
+  await testEndpoint("Consulta por Estado (Adjudicada - 8)", { estado: '8' });
 }
 
 main();
