@@ -1,24 +1,22 @@
 #!/usr/bin/env node
 
 /**
- * PLUS CONTROL - MOTOR DE INTELIGENCIA MP v2
- * Arquitectura Estratégica
- * - Normalización robusta RUT
- * - Separación Organización / Señal
- * - Scoring dinámico
- * - Idempotencia
+ * PLUS CONTROL - MOTOR DE INGESTA v2 (Producción)
+ * - Normalización RUT
+ * - Arquitectura Relacional (Org -> Signal)
+ * - Scoring Dinámico
  */
 
 const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
 
 // ============================================================
-// CONFIGURACIÓN
+// 1. CONFIGURACIÓN & VALIDACIÓN
 // ============================================================
-
 const CONFIG = {
+  // NOTA: Usamos SUPABASE_SERVICE_KEY porque así lo definimos en el YAML
   SUPABASE_URL: process.env.SUPABASE_URL,
-  SUPABASE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  SUPABASE_KEY: process.env.SUPABASE_SERVICE_KEY, 
   MP_TICKET: process.env.MP_TICKET,
   MP_BASE_URL: 'https://api.mercadopublico.cl/servicios/v1/publico',
   REGION_TARGET: 'ARAUCAN',
@@ -27,7 +25,7 @@ const CONFIG = {
 };
 
 if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY || !CONFIG.MP_TICKET) {
-  console.error("❌ Faltan variables de entorno críticas.");
+  console.error("❌ ERROR FATAL: Credenciales faltantes en el entorno.");
   process.exit(1);
 }
 
@@ -36,12 +34,13 @@ const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, {
 });
 
 // ============================================================
-// UTILIDADES
+// 2. LÓGICA DE NEGOCIO (SCORING & RUT)
 // ============================================================
 
 function normalizeRut(rutRaw) {
   if (!rutRaw) return null;
   let clean = rutRaw.replace(/[.\s]/g, '').toUpperCase();
+  if (clean.length < 3) return null;
   if (!clean.includes('-')) {
     const dv = clean.slice(-1);
     const body = clean.slice(0, -1);
@@ -57,22 +56,18 @@ function formatDate(date) {
   return `${dd}${mm}${yyyy}`;
 }
 
-function calculateScore(orden, orgHistoryCount = 0) {
+function calculateScore(orden, historyCount = 0) {
   let score = 0;
   const monto = parseFloat(orden.Total) || 0;
 
-  if (monto > 500000) score += 20;
-  if (monto > 2000000) score += 40;
-  if (monto > 10000000) score += 80;
+  // Criterios de Negocio
+  if (monto > 500000) score += 20;       // Base relevante
+  if (monto > 2000000) score += 40;      // Proyecto mediano
+  if (monto > 10000000) score += 80;     // Proyecto grande
 
-  if (orden.Comprador?.Region?.toUpperCase().includes(CONFIG.REGION_TARGET))
-    score += 30;
-
-  if (orden.Comprador?.NombreOrganismo?.toUpperCase().includes("MUNICIPAL"))
-    score += 20;
-
-  if (orgHistoryCount > 2)
-    score += 15;
+  if (orden.Comprador?.Region?.toUpperCase().includes(CONFIG.REGION_TARGET)) score += 30;
+  if (orden.Comprador?.NombreOrganismo?.toUpperCase().includes("MUNICIPAL")) score += 20;
+  if (historyCount > 0) score += 15;     // Cliente conocido
 
   return score;
 }
@@ -82,21 +77,22 @@ function log(msg) {
 }
 
 // ============================================================
-// BASE DE DATOS
+// 3. CAPA DE DATOS (Relacional)
 // ============================================================
 
 async function getOrCreateSignalType() {
-  const { data } = await supabase
+  // Se asegura que exista el tipo de señal
+  const { data, error } = await supabase
     .from('signal_types')
-    .upsert({
-      name: 'orden_compra_mp',
-      source: 'MercadoPublico',
-      base_weight: 50,
-      category: 'financial_trigger'
+    .upsert({ 
+        name: 'orden_compra_mp', 
+        source: 'MercadoPublico', 
+        base_weight: 50 
     }, { onConflict: 'name' })
     .select('id')
     .single();
-
+    
+  if (error) throw error;
   return data.id;
 }
 
@@ -104,116 +100,110 @@ async function upsertOrganization(rut, razon_social) {
   const rutNorm = normalizeRut(rut);
   if (!rutNorm) return null;
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('organizations')
     .upsert({
       rut: rutNorm,
-      razon_social,
+      razon_social: razon_social,
       region: 'Araucanía',
       updated_at: new Date()
     }, { onConflict: 'rut' })
     .select('id')
     .single();
 
+  if (error) {
+    console.error(`Error Org (${rut}):`, error.message);
+    return null;
+  }
   return data.id;
 }
 
-async function createSignal(orgId, signalTypeId, externalCode, rawData, weight) {
-  const { error } = await supabase
-    .from('signals')
-    .insert({
-      org_id: orgId,
-      signal_type_id: signalTypeId,
-      external_code: externalCode,
-      raw_data: rawData,
-      weight
-    });
-
-  if (error && error.code !== '23505') throw error;
-}
-
-async function updateOrganizationScore(orgId) {
-  const { data } = await supabase
-    .from('signals')
-    .select('weight')
-    .eq('org_id', orgId);
-
-  const total = data.reduce((sum, s) => sum + (s.weight || 0), 0);
-
-  await supabase
-    .from('organizations')
-    .update({ score_total: total })
-    .eq('id', orgId);
+async function createSignal(orgId, signalTypeId, code, rawData, score) {
+  const { error } = await supabase.from('signals').insert({
+    org_id: orgId,
+    signal_type_id: signalTypeId,
+    external_code: code,
+    raw_data: { ...rawData, calculated_score: score } // Guardamos score en JSON
+  });
+  
+  if (error && error.code !== '23505') { // Ignoramos duplicados
+     console.error('Error Signal:', error.message);
+  }
 }
 
 // ============================================================
-// API MP
-// ============================================================
-
-async function fetchMP(date) {
-  const url = `${CONFIG.MP_BASE_URL}/ordenesdecompra.json`;
-  const params = { fecha: formatDate(date), ticket: CONFIG.MP_TICKET };
-  const res = await axios.get(url, { params, timeout: 30000 });
-  return res.data?.Listado || [];
-}
-
-// ============================================================
-// MAIN
+// 4. MAIN LOOP
 // ============================================================
 
 async function main() {
-  log("🚀 Iniciando Motor Inteligente MP");
+  log("🚀 Iniciando Motor Plus Control v2...");
 
-  const signalTypeId = await getOrCreateSignalType();
-  let leads = 0;
+  try {
+    const signalTypeId = await getOrCreateSignalType();
+    let processed = 0;
 
-  for (let i = 0; i < CONFIG.DIAS_ATRAS; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
+    for (let i = 0; i < CONFIG.DIAS_ATRAS; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      
+      // Fetch API
+      const url = `${CONFIG.MP_BASE_URL}/ordenesdecompra.json`;
+      const params = { fecha: formatDate(date), ticket: CONFIG.MP_TICKET };
+      log(`📡 Consultando: ${params.fecha}`);
+      
+      let listado = [];
+      try {
+        const res = await axios.get(url, { params, timeout: 30000 });
+        listado = res.data?.Listado || [];
+      } catch (e) {
+        console.error(`⚠️ Error API MercadoPúblico: ${e.message}`);
+        continue;
+      }
 
-    const ordenes = await fetchMP(date);
+      // Procesamiento
+      for (const orden of listado) {
+        const monto = parseFloat(orden.Total) || 0;
+        const region = orden.Comprador?.Region || '';
 
-    for (const orden of ordenes) {
+        // Filtros Duros
+        if (monto < CONFIG.MONTO_MINIMO) continue;
+        if (!region.toUpperCase().includes(CONFIG.REGION_TARGET)) continue;
 
-      const monto = parseFloat(orden.Total) || 0;
-      const region = orden.Comprador?.Region || '';
+        // Gestión Relacional
+        const orgId = await upsertOrganization(
+          orden.Comprador.RutUnidad,
+          orden.Comprador.NombreOrganismo
+        );
 
-      if (monto < CONFIG.MONTO_MINIMO) continue;
-      if (!region.toUpperCase().includes(CONFIG.REGION_TARGET)) continue;
+        if (!orgId) continue;
 
-      const orgId = await upsertOrganization(
-        orden.Comprador.RutUnidad,
-        orden.Comprador.NombreOrganismo
-      );
+        // Historial para scoring
+        const { count } = await supabase
+            .from('signals')
+            .select('*', { count: 'exact', head: true })
+            .eq('org_id', orgId);
 
-      if (!orgId) continue;
+        const score = calculateScore(orden, count);
 
-      const { data: history } = await supabase
-        .from('signals')
-        .select('id')
-        .eq('org_id', orgId);
-
-      const score = calculateScore(orden, history.length);
-
-      await createSignal(
-        orgId,
-        signalTypeId,
-        `MP-${orden.Codigo}`,
-        orden,
-        score
-      );
-
-      await updateOrganizationScore(orgId);
-
-      log(`💰 Señal detectada: ${orden.Codigo} | Score: ${score}`);
-      leads++;
+        await createSignal(
+            orgId, 
+            signalTypeId, 
+            `MP-${orden.Codigo}`, 
+            orden, 
+            score
+        );
+        
+        log(`✅ Oportunidad: ${orden.NombreProveedor} | Score: ${score}`);
+        processed++;
+      }
     }
-  }
+    
+    log(`🏁 Ejecución finalizada. Leads procesados: ${processed}`);
 
-  log(`🏁 Finalizado. Nuevas señales: ${leads}`);
+  } catch (error) {
+    console.error("🔥 Error Crítico:", error);
+    process.exit(1);
+  }
 }
 
-main().catch(err => {
-  console.error("🔥 Error fatal:", err);
-  process.exit(1);
-});
+main();
