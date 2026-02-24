@@ -19,9 +19,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          # Importante: Si no tienes package-lock.json, esto puede fallar. 
-          # Si falla de nuevo, quitaremos la línea de cache.
 
       - name: Instalar dependencias
         run: npm install
