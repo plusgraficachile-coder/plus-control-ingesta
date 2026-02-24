@@ -1,168 +1,193 @@
-# Plan corto y operativo — listo para ejecutar
+#!/usr/bin/env node
+/**
+ * PLUS CONTROL - MOTOR DE INGESTA V3 (Producción)
+ * - Normalización de Texto (Región)
+ * - Retry con Backoff Exponencial (Anti-Caídas)
+ * - Deep Dive (Lista -> Detalle)
+ */
+const axios = require('axios');
+const { createClient } = require('@supabase/supabase-js');
 
-Voy a darte **todo lo que necesitas** para poner ese `ingest-mp.js` en producción: checklist previo, comandos para correr ahora, mejoras rápidas al código (robustez en región y backoff), SQL mínimo para las tablas que usa y una sugerencia de workflow para programarlo.
+// --- 1. CONFIGURACIÓN ---
+const CONFIG = {
+  SUPABASE_URL: process.env.SUPABASE_URL,
+  SUPABASE_KEY: process.env.SUPABASE_SERVICE_KEY, 
+  MP_TICKET: process.env.MP_TICKET,
+  API_URL: 'https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json',
+  REGION_TARGET: 'ARAUCAN', // Buscamos la raíz (Araucanía, Araucania, De la Araucanía)
+  MONTO_MINIMO: 500000,
+  DIAS_ATRAS: 2,     // Hoy y Ayer
+  CONCURRENCIA: 5,   // Peticiones simultáneas de detalle
+  MAX_RETRIES: 5     // Intentos ante error 500
+};
 
----
-
-# 1) Checklist previo (obligatorio antes de `git push` / run)
-
-1. Variables de entorno (export / GitHub Secrets):
-
-   * `SUPABASE_URL`
-   * `SUPABASE_SERVICE_KEY`
-   * `MP_TICKET`
-2. Verificar versión Node (≥16).
-3. Hacer **backup** de la DB (por si el upsert rompe algo).
-4. Comprueba que las tablas existen y tienen índices (SQL abajo).
-5. Ejecuta localmente con `DIAS_ATRAS=1` para prueba.
-
----
-
-# 2) Comandos inmediatos (local)
-
-```bash
-# instalar deps
-npm ci
-
-# correr prueba para Hoy (1 día)
-export SUPABASE_URL="..."
-export SUPABASE_SERVICE_KEY="..."
-export MP_TICKET="..."
-node ingest-mp.js
-# observar logs en consola
-```
-
-Si usas npm script:
-
-```json
-"scripts": { "ingest": "node ingest-mp.js" }
-npm run ingest
-```
-
----
-
-# 3) SQL mínimo (crear tablas y índices rápidos)
-
-```sql
--- organizations
-CREATE TABLE IF NOT EXISTS organizations (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  rut text,
-  razon_social text,
-  region text,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz
-);
-CREATE UNIQUE INDEX IF NOT EXISTS organizations_rut_idx ON organizations(rut);
-
--- signal_types
-CREATE TABLE IF NOT EXISTS signal_types (
-  id serial PRIMARY KEY,
-  name text UNIQUE,
-  source text
-);
-
--- signals
-CREATE TABLE IF NOT EXISTS signals (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id uuid REFERENCES organizations(id),
-  signal_type_id int REFERENCES signal_types(id),
-  external_code text,
-  raw_data jsonb,
-  created_at timestamptz DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS signals_org_idx ON signals(org_id);
-CREATE UNIQUE INDEX IF NOT EXISTS signals_external_unique ON signals(external_code);
-```
-
-Asegura `pgcrypto` para `gen_random_uuid()` o usa `uuid_generate_v4()` según tu setup.
-
----
-
-# 4) Mejoras recomendadas al script (2 patches cortos)
-
-A) **Normalizar y detectar Región** (manejar tildes / variaciones):
-
-```js
-function normalizeText(s='') {
-  return s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+// Validar entorno
+if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY || !CONFIG.MP_TICKET) {
+  console.error("❌ ERROR FATAL: Faltan credenciales en el entorno (.env / Secrets)");
+  process.exit(1);
 }
-// uso:
-const region = normalizeText(detail.Comprador?.Region || 'DESCONOCIDA');
-if (!region.includes(normalizeText(CONFIG.REGION_TARGET))) return false;
-```
 
-B) **Backoff + jitter en reintentos (getDailyList y getLicitacionDetail)**:
+const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, {
+  auth: { persistSession: false }
+});
 
-```js
-async function retry(fn, attempts = 5) {
-  for (let i=0;i<attempts;i++){
-    try { return await fn(); } 
-    catch(e){
-      const base = 2000 * Math.pow(2,i); // 2s,4s,8s...
-      const jitter = Math.floor(Math.random()*1000);
-      await wait(base + jitter);
-      if (i === attempts-1) throw e;
+// --- 2. UTILIDADES ROBUSTAS ---
+
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Normaliza texto: "La Araucanía" -> "LA ARAUCANIA"
+function normalizeText(s) {
+  if (!s) return '';
+  return s.toString()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Quita tildes
+    .toUpperCase()
+    .trim();
+}
+
+function formatDate(date) {
+  const dd = String(date.getDate()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const yyyy = date.getFullYear();
+  return `${dd}${mm}${yyyy}`;
+}
+
+// Cliente HTTP con Retry & Backoff
+async function fetchWithRetry(url, params, context = '') {
+  for (let i = 0; i < CONFIG.MAX_RETRIES; i++) {
+    try {
+      const res = await axios.get(url, { params, timeout: 15000 });
+      return res.data;
+    } catch (e) {
+      const status = e.response?.status || 'Network';
+      const isLast = i === CONFIG.MAX_RETRIES - 1;
+      
+      console.warn(`⚠️ [Intento ${i+1}/${CONFIG.MAX_RETRIES}] Fallo en ${context}: ${status}`);
+      
+      if (isLast) {
+        console.error(`❌ Error definitivo en ${context}. Saltando.`);
+        return null;
+      }
+
+      // Backoff: 2s, 4s, 8s... + Jitter (para no golpear sincronizado)
+      const baseDelay = 2000 * Math.pow(2, i);
+      const jitter = Math.floor(Math.random() * 1000);
+      await wait(baseDelay + jitter);
     }
   }
 }
-```
 
-Integra `retry(() => axios.get(...))`.
+// --- 3. LÓGICA CORE ---
 
----
+async function processDetail(codigo) {
+  // 1. Obtener Detalle
+  const data = await fetchWithRetry(
+    CONFIG.API_URL, 
+    { codigo, ticket: CONFIG.MP_TICKET }, 
+    `Detalle ${codigo}`
+  );
+  
+  const detail = data?.Listado?.[0];
+  if (!detail) return false;
 
-# 5) Observabilidad / métricas (imprescindible)
+  // 2. Extracción y Normalización
+  const regionRaw = detail.Comprador?.Region || '';
+  const regionNorm = normalizeText(regionRaw);
+  const targetNorm = normalizeText(CONFIG.REGION_TARGET);
+  const monto = parseInt(detail.MontoEstimado) || 0;
 
-* Logs: `console.info` para total procesados; `console.warn` para reintentos; `console.error` para fallos irreversibles.
-* Métricas mínimas: `total_listas_consultadas`, `total_detalles_ok`, `total_upserts_ok`, `total_retries`.
-* Alarma: GitHub Action / cron + webhook a Slack o correo si `total_upserts_ok === 0` por 3 ejecuciones consecutivas.
+  // 3. Filtros
+  if (!regionNorm.includes(targetNorm)) return false; // No es Araucanía
+  if (monto < CONFIG.MONTO_MINIMO) return false;      // Muy barato
 
----
+  // 4. Persistencia (Upsert)
+  
+  // A. Organización
+  const rutOrg = detail.Comprador?.RutUnidad || 'SN';
+  const { data: org, error: orgError } = await supabase.from('organizations')
+    .upsert({ 
+      rut: rutOrg, 
+      razon_social: detail.Comprador?.NombreOrganismo,
+      region: regionRaw, // Guardamos el original para visualización
+      updated_at: new Date()
+    }, { onConflict: 'rut' })
+    .select('id')
+    .single();
 
-# 6) Git / CI: sugerencia de workflow (GitHub Actions)
+  if (orgError) {
+    console.error(`Error guardando Org ${rutOrg}:`, orgError.message);
+    return false;
+  }
 
-```yaml
-name: MP Ingest Daily
-on:
-  schedule:
-    - cron: '0 9 * * *'  # 09:00 CLT
-jobs:
-  ingest:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with: node-version: '18'
-      - name: Install
-        run: npm ci
-      - name: Run ingest
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          MP_TICKET: ${{ secrets.MP_TICKET }}
-        run: npm run ingest
-```
+  // B. Tipo de Señal (Solo asegurar que existe)
+  const { data: type } = await supabase.from('signal_types')
+    .upsert({ name: 'licitacion_publica', source: 'MercadoPublico' }, { onConflict: 'name' })
+    .select('id')
+    .single();
 
----
+  // C. Señal (Oportunidad)
+  const { error: sigError } = await supabase.from('signals').insert({
+    org_id: org.id,
+    signal_type_id: type.id,
+    external_code: detail.CodigoExternal,
+    raw_data: detail // Guardamos todo el JSON para análisis futuro
+  });
 
-# 7) Riesgos detectados y mitigaciones rápidas
+  if (!sigError) {
+    console.log(`🎯 ¡LEAD CAPTURADO! ${detail.CodigoExternal} | $${monto.toLocaleString('es-CL')} | ${detail.Nombre.substring(0,40)}...`);
+    return true;
+  } else if (sigError.code !== '23505') { // Ignorar error de duplicado
+    console.error(`Error guardando Señal:`, sigError.message);
+  }
+  
+  return false;
+}
 
-* **Error 500 masivo**: mitigado por retry+backoff.
-* **Rate limits del MP API**: baja concurrencia (CONCURRENCIA=5) y pausas entre batches. Si ves 429, reduce concurrencia y añade backoff.
-* **Upsert duplicados / conflictos**: usa `onConflict` (ya en script) y un índice único en `external_code`.
-* **Tamaño `raw_data`**: si es enorme, considerar almacenar solo campos clave y guardar raw en bucket S3 si es >1MB.
-* **Falsa región**: usar normalización, fallback a detalle de comprador y geocoding si sigue desconocida.
+// --- 4. ORQUESTADOR PRINCIPAL ---
 
----
+async function main() {
+  console.log("🚀 INICIANDO MOTOR V3 (Robustez + Región)...");
+  let totalCapturados = 0;
 
-# 8) Paso operativo propuesto ahora (acción concreta)
+  for (let d = 0; d < CONFIG.DIAS_ATRAS; d++) {
+    const date = new Date();
+    date.setDate(date.getDate() - d);
+    const dateStr = formatDate(date);
 
-1. Añade los patches (normalización + retry).
-2. Asegura tablas con el SQL.
-3. Push y correr local `DIAS_ATRAS=1`.
-4. Revisa logs; confirma que salen líneas `🎯 ¡BINGO!` o al menos recuentos.
-5. Si OK, activa GitHub Action.
+    console.log(`\n📅 Procesando fecha: ${dateStr}`);
+    
+    // Paso 1: Obtener Lista Diaria
+    const listData = await fetchWithRetry(
+      CONFIG.API_URL, 
+      { fecha: dateStr, ticket: CONFIG.MP_TICKET }, 
+      `Lista ${dateStr}`
+    );
+    
+    const listado = listData?.Listado || [];
+    console.log(`   Items en lista bruta: ${listado.length}`);
 
-Si quieres, te doy **el diff** exacto para pegar en `ingest-mp.js` con las mejoras (retry + normalize) y el `workflow.yml`. ¿Lo pongo aquí listo para copiar?
+    // Paso 2: Procesar en Batches (Concurrencia Controlada)
+    for (let i = 0; i < listado.length; i += CONFIG.CONCURRENCIA) {
+      const batch = listado.slice(i, i + CONFIG.CONCURRENCIA);
+      
+      const promises = batch.map(item => {
+        if (item.CodigoExternal) return processDetail(item.CodigoExternal);
+        return Promise.resolve(false);
+      });
+
+      const results = await Promise.all(promises);
+      totalCapturados += results.filter(Boolean).length;
+      
+      // Feedback visual de progreso
+      if (i % 20 === 0) process.stdout.write('.');
+    }
+  }
+
+  console.log(`\n\n🏁 EJECUCIÓN FINALIZADA.`);
+  console.log(`   Total Leads Araucanía Capturados: ${totalCapturados}`);
+  
+  if (totalCapturados === 0) {
+    console.warn("⚠️ No se encontraron leads. Verifica: 1. Horario (temprano?) 2. Ticket 3. Filtros");
+  }
+}
+
+main();
