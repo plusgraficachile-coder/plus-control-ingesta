@@ -1,3 +1,14 @@
+#!/usr/bin/env node
+
+/**
+ * PLUS CONTROL - MOTOR DE INTELIGENCIA MP v2
+ * Arquitectura Estratégica
+ * - Normalización robusta RUT
+ * - Separación Organización / Señal
+ * - Scoring dinámico
+ * - Idempotencia
+ */
+
 const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -7,23 +18,19 @@ const { createClient } = require('@supabase/supabase-js');
 
 const CONFIG = {
   SUPABASE_URL: process.env.SUPABASE_URL,
-  SUPABASE_KEY: process.env.SUPABASE_SERVICE_KEY, // Mapeo correcto desde GitHub
+  SUPABASE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   MP_TICKET: process.env.MP_TICKET,
   MP_BASE_URL: 'https://api.mercadopublico.cl/servicios/v1/publico',
-  REGION_CODIGO: '9',        // Araucanía
-  MONTO_MINIMO: 500000,      // $500k
-  DIAS_ATRAS: 3,             // Buscar últimos 3 días
-  SIGNAL_SCORE: 50           // Score inicial por licitación
+  REGION_TARGET: 'ARAUCAN',
+  MONTO_MINIMO: 500000,
+  DIAS_ATRAS: 1
 };
 
-// Validar variables de entorno
 if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY || !CONFIG.MP_TICKET) {
-  console.error('❌ ERROR: Variables de entorno faltantes');
-  console.error('Requeridas: SUPABASE_URL, SUPABASE_SERVICE_KEY, MP_TICKET');
+  console.error("❌ Faltan variables de entorno críticas.");
   process.exit(1);
 }
 
-// Cliente Supabase
 const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, {
   auth: { persistSession: false }
 });
@@ -34,219 +41,179 @@ const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, {
 
 function normalizeRut(rutRaw) {
   if (!rutRaw) return null;
-  let clean = rutRaw.replace(/[.\s]/g, '').trim().toUpperCase();
-  if (clean.length < 7) return null;
+  let clean = rutRaw.replace(/[.\s]/g, '').toUpperCase();
   if (!clean.includes('-')) {
     const dv = clean.slice(-1);
-    const cuerpo = clean.slice(0, -1);
-    clean = `${cuerpo}-${dv}`;
+    const body = clean.slice(0, -1);
+    clean = `${body}-${dv}`;
   }
   return clean;
 }
 
-function formatDateForMP(date) {
+function formatDate(date) {
   const dd = String(date.getDate()).padStart(2, '0');
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const yyyy = date.getFullYear();
   return `${dd}${mm}${yyyy}`;
 }
 
-function log(level, message, data = null) {
-  const timestamp = new Date().toISOString();
-  // Iconos simples para logs de texto
-  const icons = { info: 'ℹ️', success: '✅', warning: '⚠️', error: '❌', debug: '🔍' };
-  console.log(`${icons[level] || 'ℹ️'} [${timestamp}] ${message}`);
-  if (data) console.log(JSON.stringify(data, null, 2));
+function calculateScore(orden, orgHistoryCount = 0) {
+  let score = 0;
+  const monto = parseFloat(orden.Total) || 0;
+
+  if (monto > 500000) score += 20;
+  if (monto > 2000000) score += 40;
+  if (monto > 10000000) score += 80;
+
+  if (orden.Comprador?.Region?.toUpperCase().includes(CONFIG.REGION_TARGET))
+    score += 30;
+
+  if (orden.Comprador?.NombreOrganismo?.toUpperCase().includes("MUNICIPAL"))
+    score += 20;
+
+  if (orgHistoryCount > 2)
+    score += 15;
+
+  return score;
+}
+
+function log(msg) {
+  console.log(`[${new Date().toISOString()}] ${msg}`);
 }
 
 // ============================================================
-// FUNCIONES DE NEGOCIO
+// BASE DE DATOS
 // ============================================================
 
 async function getOrCreateSignalType() {
-  try {
-    const { data: existing, error: readError } = await supabase
-      .from('signal_types')
-      .select('id')
-      .eq('name', 'orden_compra_araucania')
-      .maybeSingle();
-    
-    if (readError) throw readError;
-    if (existing) return existing.id;
-    
-    const { data: created, error: createError } = await supabase
-      .from('signal_types')
-      .insert({
-        name: 'orden_compra_araucania',
-        source: 'MercadoPublico',
-        base_weight: 50,
-        category: 'financial_trigger'
-      })
-      .select('id')
-      .single();
-    
-    if (createError) throw createError;
-    return created.id;
-    
-  } catch (error) {
-    log('error', 'Error en getOrCreateSignalType', { error: error.message });
-    throw error;
-  }
+  const { data } = await supabase
+    .from('signal_types')
+    .upsert({
+      name: 'orden_compra_mp',
+      source: 'MercadoPublico',
+      base_weight: 50,
+      category: 'financial_trigger'
+    }, { onConflict: 'name' })
+    .select('id')
+    .single();
+
+  return data.id;
 }
 
-async function upsertOrganization(orgData) {
-  try {
-    const rutNorm = normalizeRut(orgData.rut);
-    if (!rutNorm) {
-      log('warning', `RUT inválido: ${orgData.rut}`);
-      return null;
-    }
-    
-    // UPSERT inteligente (Insertar o Actualizar si existe)
-    const { data, error } = await supabase
-      .from('organizations')
-      .upsert({
-         rut: rutNorm,
-         razon_social: orgData.razon_social,
-         region: 'Araucanía',
-         updated_at: new Date() // Actualizamos la fecha de última vista
-      }, { onConflict: 'rut' })
-      .select('id')
-      .single();
+async function upsertOrganization(rut, razon_social) {
+  const rutNorm = normalizeRut(rut);
+  if (!rutNorm) return null;
 
-    if (error) throw error;
-    return data.id;
+  const { data } = await supabase
+    .from('organizations')
+    .upsert({
+      rut: rutNorm,
+      razon_social,
+      region: 'Araucanía',
+      updated_at: new Date()
+    }, { onConflict: 'rut' })
+    .select('id')
+    .single();
 
-  } catch (error) {
-    log('error', 'Error en upsertOrganization', { error: error.message, rut: orgData.rut });
-    return null;
-  }
+  return data.id;
 }
 
-async function createSignal(orgId, signalTypeId, externalCode, rawData) {
-  try {
-    const { error } = await supabase
-      .from('signals')
-      .insert({
-        org_id: orgId,
-        signal_type_id: signalTypeId,
-        external_code: externalCode,
-        raw_data: rawData
-      });
-    
-    if (error) {
-      if (error.code === '23505') return false; // Ya existe (Idempotencia)
-      throw error;
-    }
-    return true;
-    
-  } catch (error) {
-    log('error', 'Error creando señal', { error: error.message });
-    return false;
-  }
-}
-
-async function fetchOrdenesCompra(fecha, retries = 3) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const url = `${CONFIG.MP_BASE_URL}/ordenesdecompra.json`;
-      const params = { fecha: formatDateForMP(fecha), ticket: CONFIG.MP_TICKET };
-      
-      log('info', `Consultando MP: ${formatDateForMP(fecha)} (Intento ${attempt}/${retries})`);
-      const response = await axios.get(url, { params, timeout: 30000 });
-      
-      return response.data?.Listado || [];
-      
-    } catch (error) {
-      log('warning', `Fallo intento ${attempt}: ${error.message}`);
-      if (attempt < retries) await new Promise(r => setTimeout(r, 2000 * attempt));
-    }
-  }
-  return [];
-}
-
-async function procesarOrden(orden, signalTypeId) {
-  try {
-    const monto = parseFloat(orden.Total) || 0;
-    if (monto < CONFIG.MONTO_MINIMO) return { procesada: false };
-
-    const region = orden.Region || '';
-    if (!region.toLowerCase().includes('araucan')) return { procesada: false }; // Solo Araucanía
-
-    // 1. Gestionar Organización
-    const orgId = await upsertOrganization({
-      rut: orden.RutProveedor,
-      razon_social: orden.NombreProveedor || 'Proveedor Sin Nombre'
+async function createSignal(orgId, signalTypeId, externalCode, rawData, weight) {
+  const { error } = await supabase
+    .from('signals')
+    .insert({
+      org_id: orgId,
+      signal_type_id: signalTypeId,
+      external_code: externalCode,
+      raw_data: rawData,
+      weight
     });
 
-    if (!orgId) return { procesada: false };
+  if (error && error.code !== '23505') throw error;
+}
 
-    // 2. Gestionar Señal
-    const externalCode = `MP-OC-${orden.Codigo}`;
-    const rawData = {
-      codigo: orden.Codigo,
-      monto: monto,
-      comprador: orden.NombreOrganismo,
-      fecha: orden.Fecha,
-      estado: orden.Estado,
-      link: `https://www.mercadopublico.cl/PurchaseOrder/Modules/PO/DetailsPurchaseOrder.aspx?codigoOC=${orden.Codigo}`
-    };
+async function updateOrganizationScore(orgId) {
+  const { data } = await supabase
+    .from('signals')
+    .select('weight')
+    .eq('org_id', orgId);
 
-    const created = await createSignal(orgId, signalTypeId, externalCode, rawData);
-    
-    if (created) log('success', `Lead: ${orden.NombreProveedor} ($${monto.toLocaleString('es-CL')})`);
-    
-    return { procesada: true, creada: created, monto: monto };
+  const total = data.reduce((sum, s) => sum + (s.weight || 0), 0);
 
-  } catch (error) {
-    log('error', 'Error procesando orden', error);
-    return { procesada: false };
-  }
+  await supabase
+    .from('organizations')
+    .update({ score_total: total })
+    .eq('id', orgId);
 }
 
 // ============================================================
-// MAIN LOOP
+// API MP
+// ============================================================
+
+async function fetchMP(date) {
+  const url = `${CONFIG.MP_BASE_URL}/ordenesdecompra.json`;
+  const params = { fecha: formatDate(date), ticket: CONFIG.MP_TICKET };
+  const res = await axios.get(url, { params, timeout: 30000 });
+  return res.data?.Listado || [];
+}
+
+// ============================================================
+// MAIN
 // ============================================================
 
 async function main() {
-  const startTime = Date.now();
-  log('info', '🚀 INICIANDO INGESTA FULL (Versión Ferrari)');
-  
-  try {
-    // NOTA: Hemos desactivado temporalmente el LOCK (RPC) para asegurar que 
-    // la primera ejecución funcione sin necesidad de funciones SQL complejas adicionales.
-    
-    const signalTypeId = await getOrCreateSignalType();
-    let stats = { procesadas: 0, nuevas: 0, monto: 0 };
+  log("🚀 Iniciando Motor Inteligente MP");
 
-    for (let i = 0; i < CONFIG.DIAS_ATRAS; i++) {
-      const fecha = new Date();
-      fecha.setDate(fecha.getDate() - i);
-      
-      const ordenes = await fetchOrdenesCompra(fecha);
-      log('info', `📅 ${formatDateForMP(fecha)}: ${ordenes.length} órdenes encontradas.`);
+  const signalTypeId = await getOrCreateSignalType();
+  let leads = 0;
 
-      for (const orden of ordenes) {
-        const res = await procesarOrden(orden, signalTypeId);
-        if (res.procesada) {
-          stats.procesadas++;
-          if (res.creada) {
-            stats.nuevas++;
-            stats.monto += res.monto;
-          }
-        }
-      }
+  for (let i = 0; i < CONFIG.DIAS_ATRAS; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+
+    const ordenes = await fetchMP(date);
+
+    for (const orden of ordenes) {
+
+      const monto = parseFloat(orden.Total) || 0;
+      const region = orden.Comprador?.Region || '';
+
+      if (monto < CONFIG.MONTO_MINIMO) continue;
+      if (!region.toUpperCase().includes(CONFIG.REGION_TARGET)) continue;
+
+      const orgId = await upsertOrganization(
+        orden.Comprador.RutUnidad,
+        orden.Comprador.NombreOrganismo
+      );
+
+      if (!orgId) continue;
+
+      const { data: history } = await supabase
+        .from('signals')
+        .select('id')
+        .eq('org_id', orgId);
+
+      const score = calculateScore(orden, history.length);
+
+      await createSignal(
+        orgId,
+        signalTypeId,
+        `MP-${orden.Codigo}`,
+        orden,
+        score
+      );
+
+      await updateOrganizationScore(orgId);
+
+      log(`💰 Señal detectada: ${orden.Codigo} | Score: ${score}`);
+      leads++;
     }
-
-    log('info', '════════ RESUMEN ════════');
-    log('success', `Nuevos Leads: ${stats.nuevas}`);
-    log('info', `Monto Detectado: $${stats.monto.toLocaleString('es-CL')}`);
-    log('info', `Tiempo: ${((Date.now() - startTime) / 1000).toFixed(2)}s`);
-
-  } catch (error) {
-    log('error', 'ERROR FATAL EN MAIN', error);
-    process.exit(1);
   }
+
+  log(`🏁 Finalizado. Nuevas señales: ${leads}`);
 }
 
-main();
+main().catch(err => {
+  console.error("🔥 Error fatal:", err);
+  process.exit(1);
+});
