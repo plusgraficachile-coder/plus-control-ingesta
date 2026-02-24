@@ -1,30 +1,34 @@
 name: Ingesta Mercado Público
 
 on:
+  workflow_dispatch: # Botón manual para probar
   schedule:
-    - cron: '0 12 * * *'
-  workflow_dispatch:
+    - cron: '0 12 * * *' # Ejecutar todos los días a las 12:00 UTC
 
 jobs:
-  ingest:
-    name: Capturar leads
+  capturar-leads:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+
     steps:
-      - name: Checkout código
+      - name: Checkout del código
         uses: actions/checkout@v4
-      
-      - name: Setup Node.js
+
+      - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-      
+          node-version: '20'
+          cache: 'npm'
+          # Importante: Si no tienes package-lock.json, esto puede fallar. 
+          # Si falla de nuevo, quitaremos la línea de cache.
+
       - name: Instalar dependencias
         run: npm install
-      
-      - name: Ejecutar ingesta
+
+      - name: Ejecutar Script de Ingesta
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           MP_TICKET: ${{ secrets.MP_TICKET }}
-        run: npm run ingest
+        run: node ingest-mp.js
