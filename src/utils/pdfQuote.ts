@@ -236,6 +236,8 @@ export const generatePDF = async (quote: any, materials: any[] = []) => {
     head: [['CODIGO', 'CANT', 'PRODUCTO', 'CARACTERISTICAS', 'MEDIDAS', 'P. UNIDAD', 'TOTAL']],
     body: tableRows,
     theme: 'plain',
+    rowPageBreak: 'avoid', // Evita que una fila se parta entre páginas — la fila entera salta a la siguiente
+    showHead: 'everyPage',  // Repite el header en cada página para contexto
     headStyles: {
       fillColor: DARK,
       textColor: WHITE,
