@@ -3,165 +3,420 @@
 @tailwind utilities;
 
 /* ============================================================
-   🎛️ SISTEMA VISUAL — PLUS GRÁFICA (EDICIÓN INDUSTRIAL)
+   🎨 SISTEMA VISUAL — PLUS GRÁFICA (PALETA COHERENTE)
    ============================================================ */
 
-/* =========================
-   1️⃣ TOKENS DE DISEÑO
-   ========================= */
 @layer base {
   :root {
-    /* Fondos */
-    --pg-bg-main: #0f172a;
-    --pg-bg-card: #1e293b;
-
-    /* Marca */
-    --pg-cyan: #00AEEF;
-    --pg-cyan-glow: rgba(0, 174, 239, 0.25);
-
-    /* Texto */
-    --pg-text-main: #e2e8f0;
-    --pg-text-muted: #a3b3c9;
-
-    /* Bordes */
-    --pg-border: #334155;
-
-    /* Estados */
-    --pg-status-warning: #fbbf24;
-    --pg-status-danger: #f43f5e;
-    --pg-status-success: #10b981;
+    /* 🌞 LIGHT MODE - Estilo moderno con colores suaves */
+    --pg-bg-main: 245 247 250;        /* #F5F7FA - Gris azulado muy claro */
+    --pg-bg-card: 255 255 255;        /* Blanco puro */
+    --pg-bg-elevated: 250 251 252;    /* Blanco ligeramente azulado */
+    
+    /* Primary - Violeta vibrante */
+    --pg-primary: 99 102 241;         /* #6366F1 - Indigo/Violeta */
+    --pg-primary-hover: 79 70 229;    /* #4F46E5 */
+    --pg-primary-light: 165 180 252;  /* #A5B4FC */
+    
+    /* Accent - Azul/Cyan suave */
+    --pg-cyan: 14 165 233;            /* #0EA5E9 - Sky blue */
+    --pg-cyan-glow: rgba(14, 165, 233, 0.15);
+    
+    /* Status - Colores vibrantes pero suaves */
+    --pg-status-success: 34 197 94;   /* #22C55E - Verde esmeralda */
+    --pg-status-warning: 251 146 60;  /* #FB923C - Naranja suave */
+    --pg-status-danger: 239 68 68;    /* #EF4444 - Rojo coral */
+    
+    /* Text - Alto contraste */
+    --pg-text-main: 15 23 42;         /* #0F172A - Casi negro */
+    --pg-text-secondary: 71 85 105;   /* #475569 - Gris oscuro */
+    --pg-text-muted: 148 163 184;     /* #94A3B8 - Gris medio */
+    
+    /* Borders - Muy sutiles */
+    --pg-border: 226 232 240;         /* #E2E8F0 */
+    --pg-border-hover: 203 213 225;   /* #CBD5E1 */
   }
 
+  .dark {
+    /* 🌙 DARK MODE */
+    --pg-bg-main: 10 14 39;           /* #0A0E27 */
+    --pg-bg-card: 20 27 61;           /* #141B3D */
+    --pg-bg-elevated: 26 35 80;       /* #1A2350 */
+    
+    --pg-primary: 129 140 248;        /* #818CF8 - Más brillante en dark */
+    --pg-primary-hover: 99 102 241;
+    --pg-primary-light: 165 180 252;
+    
+    --pg-cyan: 56 189 248;            /* #38BDF8 */
+    --pg-cyan-glow: rgba(56, 189, 248, 0.2);
+    
+    --pg-status-success: 74 222 128;
+    --pg-status-warning: 251 191 36;
+    --pg-status-danger: 248 113 113;
+    
+    --pg-text-main: 248 250 252;
+    --pg-text-secondary: 203 213 225;
+    --pg-text-muted: 100 116 139;
+    
+    --pg-border: 30 41 59;
+    --pg-border-hover: 51 65 85;
+  }
+  
   body {
-    background: var(--pg-bg-main);
-    color: var(--pg-text-main);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    @apply bg-pg-bg text-pg-text font-roboto antialiased;
+  }
+
+  html {
+    scroll-behavior: smooth;
   }
 }
 
-/* =========================
-   2️⃣ SUPERFICIES BASE
-   ========================= */
 @layer components {
-  .pg-surface {
-    background: var(--pg-bg-card);
-    border: 1px solid var(--pg-border);
-    color: var(--pg-text-main);
-  }
-
+  /* Card con sombra suave en light mode */
   .pg-card {
-    @apply pg-surface rounded-2xl shadow-sm;
+    @apply bg-pg-card border border-pg-border rounded-xl p-4 
+           transition-all duration-200;
+  }
+  
+  /* Light mode: sombra suave y colorida */
+  :root .pg-card {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 
+                0 1px 2px -1px rgb(0 0 0 / 0.05);
+  }
+  
+  :root .pg-card:hover {
+    box-shadow: 0 4px 6px -1px rgb(99 102 241 / 0.05),
+                0 2px 4px -2px rgb(99 102 241 / 0.05);
+  }
+  
+  /* Dark mode: sombra más dramática */
+  .dark .pg-card {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.2);
+  }
+  
+  .dark .pg-card:hover {
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3);
+  }
+  
+  .pg-container {
+    @apply w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  .pg-surface {
+    @apply bg-pg-card border border-pg-border rounded-xl;
+  }
+  
+  /* Elevated con blur sutil en light mode */
+  .pg-elevated {
+    @apply bg-pg-elevated border border-pg-border rounded-xl p-4;
+  }
+  
+  :root .pg-elevated {
+    background: linear-gradient(135deg, 
+                  rgb(var(--pg-bg-elevated)) 0%, 
+                  rgb(var(--pg-bg-card)) 100%);
   }
 }
 
-/* =========================
-   3️⃣ INPUTS / FORMULARIOS
-   ========================= */
+/* Input con mejor diseño en light mode */
 @layer components {
   .pg-input {
-    @apply pg-surface rounded-xl px-4 py-2 w-full outline-none transition;
+    @apply bg-pg-card border border-pg-border rounded-lg px-4 py-2.5 w-full 
+           text-pg-text placeholder:text-pg-muted
+           outline-none transition-all duration-200
+           focus:border-pg-primary focus:ring-2 focus:ring-pg-primary/20;
+  }
+  
+  :root .pg-input {
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  }
+  
+  :root .pg-input:focus {
+    box-shadow: 0 0 0 3px rgb(99 102 241 / 0.1),
+                0 1px 2px 0 rgb(0 0 0 / 0.05);
   }
 
-  .pg-input::placeholder {
-    color: var(--pg-text-muted);
+  .pg-select {
+    @apply pg-input appearance-none cursor-pointer
+           bg-[url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")] 
+           bg-[length:1.5em] bg-[right_0.5rem_center] bg-no-repeat pr-10;
   }
 
-  .pg-input:focus {
-    border-color: var(--pg-cyan);
-    box-shadow: 0 0 0 3px var(--pg-cyan-glow);
+  .pg-textarea {
+    @apply pg-input min-h-[100px] resize-y;
   }
 
-  select.pg-input option {
-    background: var(--pg-bg-card);
-    color: var(--pg-text-main);
+  .pg-checkbox {
+    @apply w-4 h-4 rounded border-pg-border text-pg-primary 
+           focus:ring-2 focus:ring-pg-primary/20;
   }
 }
 
-/* =========================
-   4️⃣ BOTONES INDUSTRIALES
-   ========================= */
+/* Botones con mejor diseño */
 @layer components {
   .pg-btn-primary {
-    background: var(--pg-cyan);
-    color: white;
-    @apply px-6 py-2 rounded-xl font-bold uppercase tracking-wide transition;
+    @apply bg-gradient-to-r from-pg-primary to-pg-cyan text-white 
+           px-6 py-3 rounded-lg font-semibold
+           active:scale-95 
+           transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
   }
-
-  .pg-btn-primary:hover {
-    filter: brightness(1.1);
+  
+  :root .pg-btn-primary {
+    box-shadow: 0 4px 6px -1px rgb(99 102 241 / 0.2),
+                0 2px 4px -2px rgb(99 102 241 / 0.2);
+  }
+  
+  :root .pg-btn-primary:hover {
+    box-shadow: 0 10px 15px -3px rgb(99 102 241 / 0.3),
+                0 4px 6px -4px rgb(99 102 241 / 0.3);
     transform: translateY(-1px);
   }
 
   .pg-btn-secondary {
-    @apply px-6 py-2 rounded-xl font-bold uppercase tracking-wide transition;
-    background: var(--pg-bg-card);
-    border: 1px solid var(--pg-border);
-    color: var(--pg-text-main);
+    @apply bg-pg-card border-2 border-pg-primary text-pg-primary
+           hover:bg-pg-primary hover:text-white
+           px-6 py-3 rounded-lg font-semibold
+           active:scale-95 
+           transition-all duration-200;
+  }
+  
+  :root .pg-btn-secondary {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
   }
 
-  .pg-btn-secondary:hover {
-    border-color: var(--pg-cyan);
+  .pg-btn-ghost {
+    @apply text-pg-secondary hover:text-pg-primary hover:bg-pg-elevated
+           px-4 py-2 rounded-lg font-medium
+           transition-colors duration-200;
+  }
+
+  .pg-btn-danger {
+    @apply bg-pg-danger text-white 
+           px-6 py-3 rounded-lg font-semibold
+           hover:opacity-90
+           active:scale-95 
+           transition-all duration-200;
+  }
+  
+  :root .pg-btn-danger {
+    box-shadow: 0 4px 6px -1px rgb(239 68 68 / 0.2);
+  }
+
+  .pg-btn-sm {
+    @apply px-4 py-2 text-sm rounded-lg;
   }
 }
 
-/* =========================
-   5️⃣ ESTADOS SEMÁNTICOS
-   ========================= */
+/* Badges mejorados */
 @layer components {
-  .pg-status-active   { color: var(--pg-cyan); }
-  .pg-status-warning  { color: var(--pg-status-warning); }
-  .pg-status-danger   { color: var(--pg-status-danger); }
-  .pg-status-success  { color: var(--pg-status-success); }
+  .pg-badge {
+    @apply inline-flex items-center gap-1 px-3 py-1 rounded-full 
+           text-xs font-semibold border backdrop-blur-sm;
+  }
+
+  .pg-badge-success {
+    @apply bg-pg-success/10 text-pg-success border-pg-success/20;
+  }
+  
+  :root .pg-badge-success {
+    background: linear-gradient(135deg, 
+                  rgb(var(--pg-status-success) / 0.1) 0%, 
+                  rgb(var(--pg-status-success) / 0.05) 100%);
+  }
+
+  .pg-badge-warning {
+    @apply bg-pg-warning/10 text-pg-warning border-pg-warning/20;
+  }
+
+  .pg-badge-danger {
+    @apply bg-pg-danger/10 text-pg-danger border-pg-danger/20;
+  }
+
+  .pg-badge-primary {
+    @apply bg-pg-primary/10 text-pg-primary border-pg-primary/20;
+  }
+
+  .pg-badge-cyan {
+    @apply bg-pg-cyan/10 text-pg-cyan border-pg-cyan/20;
+  }
 }
 
-/* =========================
-   6️⃣ SCROLLBAR INDUSTRIAL
-   ========================= */
+/* Scrollbar elegante */
 @layer base {
-  ::-webkit-scrollbar { width: 8px; }
-  ::-webkit-scrollbar-track { background: var(--pg-bg-main); }
-  ::-webkit-scrollbar-thumb {
-    background: var(--pg-border);
-    border-radius: 10px;
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #475569;
+
+  :root ::-webkit-scrollbar-track {
+    background: rgb(var(--pg-bg-elevated));
+    border-radius: 4px;
+  }
+
+  :root ::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, 
+                  rgb(var(--pg-primary)) 0%, 
+                  rgb(var(--pg-cyan)) 100%);
+    border-radius: 4px;
+  }
+
+  :root ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, 
+                  rgb(var(--pg-primary-hover)) 0%, 
+                  rgb(var(--pg-cyan)) 100%);
+  }
+  
+  .dark ::-webkit-scrollbar-track {
+    background: rgb(var(--pg-bg-elevated));
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background: rgb(var(--pg-border));
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--pg-primary) / 0.5);
+  }
+
+  * {
+    scrollbar-width: thin;
   }
 }
 
-/* =========================
-   7️⃣ EFECTO VIDRIO SUAVE
-   ========================= */
-@layer components {
-  .pg-glass {
-    background: rgba(30, 41, 59, 0.85);
-    backdrop-filter: blur(6px);
+/* Utilidades especiales */
+@layer utilities {
+  .pg-gradient-primary {
+    @apply bg-gradient-to-r from-pg-primary to-pg-cyan;
   }
 
-  @supports not (backdrop-filter: blur(6px)) {
-    .pg-glass {
-      background: #1e293b;
+  .pg-gradient-text {
+    @apply bg-gradient-to-r from-pg-primary to-pg-cyan bg-clip-text text-transparent;
+  }
+
+  /* Glow suave en light mode */
+  .pg-glow {
+    box-shadow: 0 0 20px var(--pg-cyan-glow);
+  }
+  
+  :root .pg-glow {
+    box-shadow: 0 0 30px rgb(99 102 241 / 0.15),
+                0 0 60px rgb(14 165 233 / 0.1);
+  }
+
+  .pg-glow-primary {
+    box-shadow: 0 0 20px rgb(var(--pg-primary) / 0.3);
+  }
+
+  /* Glass effect mejorado */
+  .pg-glass {
+    @apply backdrop-blur-xl border border-pg-border;
+  }
+  
+  :root .pg-glass {
+    background: rgba(255, 255, 255, 0.7);
+    box-shadow: 0 8px 32px 0 rgba(99, 102, 241, 0.1);
+  }
+  
+  .dark .pg-glass {
+    background: rgba(20, 27, 61, 0.8);
+  }
+
+  .pg-truncate {
+    @apply truncate;
+    cursor: help;
+  }
+
+  .pg-no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .pg-no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Animaciones */
+@layer utilities {
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 20px rgb(var(--pg-cyan) / 0.3);
+    }
+    50% {
+      box-shadow: 0 0 30px rgb(var(--pg-cyan) / 0.5);
     }
   }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-in {
+    animation: slide-in 0.3s ease-out;
+  }
 }
 
-/* =========================
-   8️⃣ MODO IMPRESIÓN (TALLER)
-   ========================= */
+/* Modo impresión */
 @media print {
   body {
-    background: white !important;
-    color: black !important;
+    @apply bg-white text-black;
   }
 
   .no-print {
     display: none !important;
   }
 
-  .print-surface {
-    background: white !important;
-    color: black !important;
-    border: 1px solid #000;
+  .pg-card,
+  .pg-surface {
+    @apply bg-white border-black;
+    box-shadow: none !important;
+  }
+
+  .pg-btn-primary,
+  .pg-btn-secondary {
+    @apply border-black text-black bg-white;
+  }
+}
+
+/* Focus visible (A11Y) */
+@layer base {
+  *:focus-visible {
+    @apply outline-none ring-2 ring-pg-primary ring-offset-2 ring-offset-pg-bg;
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    @apply outline-none ring-2 ring-pg-primary ring-offset-2 ring-offset-pg-bg;
+  }
+}
+
+/* Responsive helpers */
+@layer utilities {
+  .mobile-only {
+    @apply block sm:hidden;
+  }
+
+  .desktop-only {
+    @apply hidden sm:block;
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }

@@ -1,76 +1,123 @@
-// ============================================================
-// components/dashboard/KpiGrid.tsx
-// ============================================================
 import { Activity, Wallet, AlertTriangle, Package } from 'lucide-react';
 import { FORMATTER } from '../../utils/formatters';
 
-const KpiGrid = ({ data, dark }: any) => {
-  const cardBase = dark 
-    ? 'bg-[#111827]/60 backdrop-blur-xl border border-white/5 shadow-xl shadow-black/10' 
-    : 'bg-white border border-slate-100 shadow-sm';
-  const textMain = dark ? 'text-white' : 'text-slate-800';
-  const textSub = dark ? 'text-slate-400' : 'text-slate-500';
+interface KpiData {
+  ventasNetas: number;
+  count: number;
+  recaudado: number;
+  porCobrar: number;
+  enProduccion: number;
+  ivaMes?: any;
+}
 
-  const KpiCard = ({ title, value, subValue, icon: Icon, colorClass, gradientClass, badge }: any) => (
-    <div className={`relative p-6 rounded-3xl overflow-hidden group transition-all duration-300 hover:scale-[1.02] ${cardBase}`}>
-        {/* Fondo con brillo */}
-        <div className={`absolute -right-10 -top-10 w-32 h-32 rounded-full opacity-0 group-hover:opacity-20 transition-opacity blur-2xl ${gradientClass}`}></div>
-        
-        <div className="flex justify-between items-start mb-4 relative z-10">
-            <div className={`p-3 rounded-2xl ${dark ? 'bg-white/5' : 'bg-slate-50'} ${colorClass}`}>
-                <Icon size={22} />
-            </div>
-            {badge && (
-                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${dark ? 'bg-white/5 border-white/10' : 'bg-slate-100 border-slate-200'} ${colorClass}`}>
-                    {badge}
-                </span>
-            )}
+interface KpiGridProps {
+  data: KpiData;
+}
+
+interface KpiCardProps {
+  title: string;
+  value: string | number;
+  subValue: React.ReactNode;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  colorClass: string;
+  badge?: string;
+}
+
+const KpiGrid = ({ data }: KpiGridProps) => {
+  const KpiCard = ({ title, value, subValue, icon: Icon, colorClass, badge }: KpiCardProps) => (
+    <div className="relative pg-card group hover:shadow-pg-glow transition-all duration-300 hover:scale-[1.02] overflow-hidden">
+      {/* Efecto de brillo hover */}
+      <div className={`absolute -right-10 -top-10 w-32 h-32 rounded-full opacity-0 
+                       group-hover:opacity-10 transition-opacity blur-3xl ${colorClass}`} 
+      />
+      
+      {/* Header con ícono y badge */}
+      <div className="flex justify-between items-start mb-4 relative z-10">
+        <div className={`p-3 rounded-xl bg-gradient-to-br ${colorClass} shadow-lg 
+                         group-hover:scale-110 transition-transform`}>
+          <Icon size={20} className="text-white" />
         </div>
         
-        <div className="relative z-10">
-            <h3 className={`text-xs font-bold uppercase tracking-widest mb-1 opacity-60 ${textMain}`}>{title}</h3>
-            <div className={`text-3xl font-black tracking-tight mb-2 ${textMain}`}>{value}</div>
-            <div className={`text-xs font-medium flex items-center gap-1 ${textSub}`}>{subValue}</div>
+        {badge && (
+          <span className={`text-xs font-bold px-3 py-1 rounded-full border ${colorClass}`}>
+            {badge}
+          </span>
+        )}
+      </div>
+      
+      {/* Contenido */}
+      <div className="relative z-10 space-y-2">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-pg-secondary">
+          {title}
+        </h3>
+        
+        <div className="text-3xl sm:text-4xl font-bold text-pg-text">
+          {value}
         </div>
+        
+        <div className="text-xs text-pg-muted font-medium">
+          {subValue}
+        </div>
+      </div>
+
+      {/* Borde decorativo */}
+      <div className={`absolute bottom-0 left-0 right-0 h-1 ${colorClass} 
+                       opacity-0 group-hover:opacity-100 transition-opacity`} 
+      />
     </div>
   );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <KpiCard 
-            title="Ventas Netas" 
-            value={FORMATTER.format(data.ventasNetas)} 
-            subValue={<span><span className="text-cyan-500 font-bold">{data.count}</span> ventas reales</span>} 
-            icon={Activity} 
-            colorClass="text-cyan-500" 
-            gradientClass="bg-cyan-500" 
-            badge="FACTURADO" 
-        />
-        <KpiCard 
-            title="Recaudado (Mes)" 
-            value={FORMATTER.format(data.recaudado)} 
-            subValue="Dinero en caja (Abonos)" 
-            icon={Wallet} 
-            colorClass="text-emerald-500" 
-            gradientClass="bg-emerald-500" 
-        />
-        <KpiCard 
-            title="Por Cobrar" 
-            value={FORMATTER.format(data.porCobrar)} 
-            subValue="Deuda histórica total" 
-            icon={AlertTriangle} 
-            colorClass="text-rose-500" 
-            gradientClass="bg-rose-500" 
-        />
-        <KpiCard 
-            title="Producción" 
-            value={data.enProduccion} 
-            subValue={<span>IVA Mes: <span className="text-amber-500">{FORMATTER.format(data.ivaMes)}</span></span>} 
-            icon={Package} 
-            colorClass="text-amber-500" 
-            gradientClass="bg-amber-500" 
-            badge="ACTIVOS" 
-        />
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
+      {/* Ventas Netas */}
+      <KpiCard 
+        title="Ventas Netas" 
+        value={FORMATTER.format(data.ventasNetas)} 
+        subValue={
+          <span>
+            <span className="text-pg-cyan font-bold">{data.count}</span>
+            {' '}ventas realizadas
+          </span>
+        } 
+        icon={Activity} 
+        colorClass="from-pg-cyan to-pg-primary" 
+        badge="FACTURADO" 
+      />
+
+      {/* Recaudado */}
+      <KpiCard 
+        title="Recaudado (Mes)" 
+        value={FORMATTER.format(data.recaudado)} 
+        subValue="Efectivamente cobrado" 
+        icon={Wallet} 
+        colorClass="from-pg-success to-emerald-600" 
+      />
+
+      {/* Por Cobrar */}
+      <KpiCard 
+        title="Por Cobrar" 
+        value={FORMATTER.format(data.porCobrar)} 
+        subValue="Deuda pendiente total" 
+        icon={AlertTriangle} 
+        colorClass="from-pg-danger to-rose-600" 
+      />
+
+      {/* Producción */}
+      <KpiCard 
+        title="En Producción" 
+        value={data.enProduccion} 
+        subValue={
+          <span>
+            IVA Mes:{' '}
+            <span className="text-pg-warning font-bold">
+              {FORMATTER.format(data.ivaMes)}
+            </span>
+          </span>
+        } 
+        icon={Package} 
+        colorClass="from-pg-warning to-amber-600" 
+        badge="ACTIVOS" 
+      />
     </div>
   );
 };

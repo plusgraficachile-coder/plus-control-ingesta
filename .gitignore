@@ -1,3 +1,9 @@
+# Env files — NUNCA subir al repo
+.env
+.env.local
+.env.*.local
+.env.production
+
 # Logs
 logs
 *.log

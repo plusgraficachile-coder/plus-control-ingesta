@@ -2,71 +2,152 @@ import { useMemo } from 'react';
 import { PieChart, Calendar, DollarSign, Ban, CheckCircle } from 'lucide-react';
 import { FORMATTER } from '../../utils/formatters';
 
-// 🔥 EL FIX DE ECONORENT ESTÁ AQUÍ
-// Definimos explícitamente qué es deuda. "Enviada" NO está aquí.
 const REAL_DEBT_STATES = ['En Producción', 'Entregado', 'Aceptada', 'Finalizado'];
 
-const DebtPanel = ({ quotes = [], dark, onPay, onReject }: any) => {
+interface DebtPanelProps {
+  quotes?: any[];
+  dark?: boolean;
+  onPay: (quote: any) => void;
+  onReject: (quote: any) => void;
+}
 
+const DebtPanel = ({ quotes = [], dark, onPay, onReject }: DebtPanelProps) => {
   const cobranzaList = useMemo(() => {
     return quotes
       .filter((q: any) => 
-         q.saldo_pendiente > 0 && 
-         REAL_DEBT_STATES.includes(q.estado) // ← FILTRO ESTRICTO
+        q.saldo_pendiente > 0 && 
+        REAL_DEBT_STATES.includes(q.estado)
       )
-      .sort((a: any, b: any) => new Date(a.fecha_creacion).getTime() - new Date(b.fecha_creacion).getTime());
+      .sort((a: any, b: any) => 
+        new Date(a.fecha_creacion).getTime() - new Date(b.fecha_creacion).getTime()
+      );
   }, [quotes]);
 
-  const cardBase = dark 
-    ? 'bg-[#111827]/60 backdrop-blur-xl border border-white/5 shadow-xl shadow-black/10' 
-    : 'bg-white border border-slate-100 shadow-sm';
-  const textMain = dark ? 'text-white' : 'text-slate-800';
-
   return (
-    <div className={`lg:col-span-3 rounded-3xl overflow-hidden flex flex-col ${cardBase}`}>
-      <div className={`p-5 border-b flex justify-between items-center ${dark ? 'border-white/5 bg-rose-500/5' : 'border-slate-100 bg-rose-50'}`}>
-        <h3 className="font-bold text-rose-500 flex items-center gap-2">
-            <PieChart size={18}/> Deuda Pendiente
+    <div className="lg:col-span-3 pg-card overflow-hidden flex flex-col">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-pg-border bg-pg-danger/5 flex justify-between items-center">
+        <h3 className="font-bold text-pg-danger flex items-center gap-2">
+          <PieChart size={18} className="text-pg-danger" />
+          Deuda Pendiente
         </h3>
-        <span className="text-[10px] font-bold bg-rose-500 text-white px-2 py-0.5 rounded-full">
-            {cobranzaList.length} Casos
+        <span className="text-xs font-bold bg-pg-danger text-white px-3 py-1 rounded-full">
+          {cobranzaList.length} {cobranzaList.length === 1 ? 'Caso' : 'Casos'}
         </span>
       </div>
       
-      <div className="flex-1 overflow-x-auto p-2">
+      {/* Content */}
+      <div className="flex-1 overflow-x-auto p-4">
         {cobranzaList.length === 0 ? (
-            <div className="p-10 flex flex-col items-center justify-center text-slate-400 opacity-60">
-                <CheckCircle size={40} className="mb-2 text-emerald-500"/>
-                <p className="text-sm font-medium">¡Cuentas al día! Sin deuda activa.</p>
+          // Estado vacío
+          <div className="min-h-[200px] flex flex-col items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-pg-success/10 flex items-center justify-center mb-3">
+              <CheckCircle size={32} className="text-pg-success" />
             </div>
+            <p className="text-sm font-semibold text-pg-text mb-1">
+              ¡Cuentas al día!
+            </p>
+            <p className="text-xs text-pg-muted">
+              No hay deuda activa en este momento
+            </p>
+          </div>
         ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                {cobranzaList.map((q: any) => (
-                <div key={q.id} className={`p-3 rounded-2xl flex justify-between items-center group transition-colors border ${dark ? 'hover:bg-white/5 border-white/5' : 'hover:bg-slate-50 border-slate-100'}`}>
-                    <div className="truncate pr-2">
-                        <div className={`font-bold text-sm truncate ${textMain}`}>{q.cliente_empresa || q.cliente_nombre || 'Cliente'}</div>
-                        <div className="text-[10px] text-slate-500 flex items-center gap-1">
-                            <Calendar size={10}/> {new Date(q.fecha_creacion).toLocaleDateString()}
-                        </div>
+          // Grid de deudas
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {cobranzaList.map((q: any) => (
+              <div 
+                key={q.id} 
+                className="group relative pg-card hover:shadow-md transition-all border-l-4 border-pg-danger"
+              >
+                {/* Contenido de la card */}
+                <div className="space-y-3">
+                  {/* Cliente */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-sm text-pg-text truncate">
+                        {q.cliente_empresa || q.cliente_nombre || 'Cliente sin nombre'}
+                      </h4>
+                      <div className="flex items-center gap-1 text-xs text-pg-muted mt-1">
+                        <Calendar size={12} />
+                        <span>
+                          {new Date(q.fecha_creacion).toLocaleDateString('es-CL', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <div className="text-right">
-                            <div className="font-bold text-rose-500 text-sm">{FORMATTER.format(q.saldo_pendiente)}</div>
-                        </div>
-                        <div className="flex gap-1">
-                            <button onClick={() => onPay(q)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all" title="Registrar Pago">
-                                <DollarSign size={16} />
-                            </button>
-                            <button onClick={() => onReject(q)} className="p-1.5 rounded-lg bg-slate-500/10 text-slate-400 hover:bg-rose-500 hover:text-white transition-all" title="Anular / Rechazar">
-                                <Ban size={16} />
-                            </button>
-                        </div>
+                    
+                    {/* Badge de estado */}
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-pg-warning/20 text-pg-warning border border-pg-warning/30 whitespace-nowrap">
+                      {q.estado}
+                    </span>
+                  </div>
+
+                  {/* Monto adeudado */}
+                  <div className="pt-3 border-t border-pg-border">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs text-pg-secondary font-medium">
+                        Saldo pendiente
+                      </span>
+                      <span className="text-lg font-bold text-pg-danger">
+                        {FORMATTER.format(q.saldo_pendiente)}
+                      </span>
                     </div>
+
+                    {/* Botones de acción */}
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => onPay(q)}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 
+                                   bg-pg-success/10 text-pg-success hover:bg-pg-success hover:text-white 
+                                   rounded-lg transition-all font-medium text-sm
+                                   active:scale-95 transform"
+                        title="Registrar Pago"
+                      >
+                        <DollarSign size={16} />
+                        <span className="hidden sm:inline">Pagar</span>
+                      </button>
+                      
+                      <button 
+                        onClick={() => onReject(q)}
+                        className="flex items-center justify-center gap-2 px-3 py-2 
+                                   bg-pg-elevated text-pg-muted hover:bg-pg-danger hover:text-white 
+                                   rounded-lg transition-all
+                                   active:scale-95 transform"
+                        title="Anular / Rechazar"
+                      >
+                        <Ban size={16} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                ))}
-            </div>
+
+                {/* Indicador de hover */}
+                <div className="absolute inset-0 rounded-xl border-2 border-pg-danger/0 
+                                group-hover:border-pg-danger/20 transition-colors pointer-events-none" />
+              </div>
+            ))}
+          </div>
         )}
       </div>
+
+      {/* Footer con totales (opcional) */}
+      {cobranzaList.length > 0 && (
+        <div className="px-5 py-3 border-t border-pg-border bg-pg-elevated">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-pg-secondary font-medium">
+              Total adeudado:
+            </span>
+            <span className="text-lg font-bold text-pg-danger">
+              {FORMATTER.format(
+                cobranzaList.reduce((sum, q) => sum + q.saldo_pendiente, 0)
+              )}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

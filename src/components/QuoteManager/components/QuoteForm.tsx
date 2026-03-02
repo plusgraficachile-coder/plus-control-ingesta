@@ -3,6 +3,7 @@ import { ChevronLeft, Save, Users, Calculator, Info, Trash2 } from 'lucide-react
 import { toast } from 'sonner';
 import { FORMATTER } from '../../../utils/formatters';
 import { calculateItemTotal } from '../../../hooks/useQuoteFinance';
+import { useThemeClasses } from '../../../hooks/useThemeClasses';
 import SearchableSelect from './SearchableSelect';
 
 // Configuración de Estados
@@ -105,12 +106,8 @@ const QuoteForm = ({ initialData, onSave, onCancel, catalogs, dark }: any) => {
         setForm({ ...form, items: newItems });
     };
 
-    // Estilos
-    const theme = {
-        card: dark ? 'bg-slate-800 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-800',
-        input: dark ? 'bg-slate-700 border-slate-600 text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400',
-        label: 'text-[10px] font-bold uppercase text-slate-500 mb-1 block',
-    };
+    // Estilos — centralizado en useThemeClasses
+    const theme = useThemeClasses(dark);
 
     const formatearRut = (rutRaw: string) => {
         if (!rutRaw) return '';
@@ -128,7 +125,7 @@ const QuoteForm = ({ initialData, onSave, onCancel, catalogs, dark }: any) => {
                     <ChevronLeft /> Volver
                 </button>
                 <div className="flex gap-3">
-                    <span className="bg-slate-800 text-white px-4 py-2 rounded-lg font-mono font-bold border border-slate-700">
+                    <span className={`px-4 py-2 rounded-lg font-mono font-bold border ${theme.badge}`}>
                         {form.id ? `EDITANDO #${form.folio || '...'}` : 'NUEVA'}
                     </span>
                     <button onClick={() => onSave(form)} className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg">
@@ -164,7 +161,7 @@ const QuoteForm = ({ initialData, onSave, onCancel, catalogs, dark }: any) => {
                         </div>
                         <div className="space-y-3">
                             {form.items.map((item: any, idx: number) => (
-                                <div key={idx} className={`p-4 rounded-xl border flex flex-col gap-3 relative ${dark ? 'bg-slate-700/30 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
+                                <div key={idx} className={`p-4 rounded-xl border flex flex-col gap-3 relative ${theme.cardInner}`}>
                                     <div className="grid grid-cols-2 md:grid-cols-12 gap-3 items-end">
                                         <div className="col-span-2 md:col-span-4">
                                             <label className={theme.label}>PRODUCTO</label>
@@ -172,8 +169,8 @@ const QuoteForm = ({ initialData, onSave, onCancel, catalogs, dark }: any) => {
                                         </div>
                                         <div className="col-span-1 md:col-span-2"><label className={theme.label}>ANCHO</label><input type="number" className={`w-full p-3 text-center rounded-xl border ${theme.input}`} value={item.medidas_ancho} onChange={e=>updateItem(idx, 'medidas_ancho', e.target.value)} /></div>
                                         <div className="col-span-1 md:col-span-2"><label className={theme.label}>ALTO</label><input type="number" className={`w-full p-3 text-center rounded-xl border ${theme.input}`} value={item.medidas_alto} onChange={e=>updateItem(idx, 'medidas_alto', e.target.value)} /></div>
-                                        <div className="col-span-1 md:col-span-1"><label className={theme.label}>CANT.</label><input type="number" className={`w-full p-3 text-center font-bold rounded-xl border ${theme.input}`} value={item.cantidad} onChange={e=>updateItem(idx, 'cantidad', e.target.value)} /></div>
-                                        <div className="col-span-1 md:col-span-3 text-right"><label className={theme.label}>TOTAL</label><div className="p-3 font-mono font-bold text-cyan-400 text-sm bg-black/20 rounded-xl">{FORMATTER.format(item.total_linea)}</div></div>
+                                        <div className="col-span-1 md:col-span-2"><label className={theme.label}>CANT.</label><input type="number" className={`w-full p-3 text-center font-bold rounded-xl border ${theme.input}`} value={item.cantidad} onChange={e=>updateItem(idx, 'cantidad', e.target.value)} /></div>
+                                        <div className="col-span-1 md:col-span-2 text-right"><label className={theme.label}>TOTAL</label><div className="p-3 font-mono font-bold text-cyan-400 text-sm bg-black/20 rounded-xl">{FORMATTER.format(item.total_linea)}</div></div>
                                     </div>
                                     <div className="relative">
                                         <Info size={14} className="absolute left-3 top-3 text-slate-500"/>
@@ -189,29 +186,29 @@ const QuoteForm = ({ initialData, onSave, onCancel, catalogs, dark }: any) => {
 
                 {/* RESUMEN LATERAL */}
                 <div className="space-y-6">
-                    <div className={`p-6 rounded-xl border shadow-xl ${dark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                        <h3 className="font-bold text-lg mb-4 text-white">Resumen</h3>
+                    <div className={`p-6 rounded-xl border shadow-xl ${theme.panel}`}>
+                        <h3 className={`font-bold text-lg mb-4 ${theme.textMain}`}>Resumen</h3>
                         <div className="space-y-2 text-sm">
-                            <div className="flex justify-between text-slate-400"><span>Subtotal</span> <span>{FORMATTER.format(form.items.reduce((a:any, b:any)=>a+(b.total_linea||0), 0))}</span></div>
-                            <div className="flex justify-between items-center text-slate-400"><span>Dcto (%)</span> <input type="number" className="w-12 bg-slate-800 text-right rounded p-1 text-xs text-white border border-slate-600" value={form.descuento_porcentaje} onChange={e=>setForm({...form, descuento_porcentaje: e.target.value})}/></div>
-                            <div className="flex justify-between text-slate-400 font-bold pt-2 border-t border-slate-700"><span>Neto</span> <span className="text-white">{FORMATTER.format(form.neto_total)}</span></div>
-                            <div className="flex justify-between items-center text-slate-400"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.aplica_iva} onChange={()=>setForm({...form, aplica_iva: !form.aplica_iva})} /> IVA (19%)</label><span>{FORMATTER.format(form.iva_total)}</span></div>
-                            
-                            <div className="border-t border-slate-700 pt-3 flex justify-between items-center mt-2">
-                                <span className="text-lg font-bold text-white">TOTAL</span>
+                            <div className={`flex justify-between ${theme.textSub}`}><span>Subtotal</span> <span>{FORMATTER.format(form.items.reduce((a:any, b:any)=>a+(b.total_linea||0), 0))}</span></div>
+                            <div className={`flex justify-between items-center ${theme.textSub}`}><span>Dcto (%)</span> <input type="number" className={`w-12 text-right rounded p-1 text-xs border ${theme.panelInput}`} value={form.descuento_porcentaje} onChange={e=>setForm({...form, descuento_porcentaje: e.target.value})}/></div>
+                            <div className={`flex justify-between font-bold pt-2 border-t ${theme.textSub} ${theme.divider}`}><span>Neto</span> <span className={theme.textMain}>{FORMATTER.format(form.neto_total)}</span></div>
+                            <div className={`flex justify-between items-center ${theme.textSub}`}><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.aplica_iva} onChange={()=>setForm({...form, aplica_iva: !form.aplica_iva})} /> IVA (19%)</label><span>{FORMATTER.format(form.iva_total)}</span></div>
+
+                            <div className={`border-t pt-3 flex justify-between items-center mt-2 ${theme.divider}`}>
+                                <span className={`text-lg font-bold ${theme.textMain}`}>TOTAL</span>
                                 <span className="text-2xl font-black text-cyan-400">{FORMATTER.format(form.total_final)}</span>
                             </div>
 
-                            {/* 🔥🔥 AQUÍ ESTÁ EL CAMPO NUEVO: ABONO 🔥🔥 */}
-                            <div className="mt-4 pt-4 border-t border-slate-700/50">
+                            {/* ABONO */}
+                            <div className={`mt-4 pt-4 border-t ${theme.divider}`}>
                                 <label className="block text-[10px] font-bold uppercase text-amber-500 mb-1">Abono Inicial (Pago)</label>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-slate-500">$</span>
-                                    <input 
-                                        type="number" 
-                                        value={form.abono_inicial} 
+                                    <span className={theme.textSub}>$</span>
+                                    <input
+                                        type="number"
+                                        value={form.abono_inicial}
                                         onChange={(e) => setForm({...form, abono_inicial: Number(e.target.value)})}
-                                        className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-right text-white font-bold outline-none focus:border-amber-500"
+                                        className={`w-full border rounded p-2 text-right font-bold outline-none focus:border-amber-500 ${theme.panelInput}`}
                                     />
                                 </div>
                             </div>

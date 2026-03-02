@@ -11,8 +11,7 @@ import {
 import { toast } from 'sonner';
 import { FORMATTER } from '../utils/formatters';
 
-// TU CLAVE API
-const API_KEY = 'AIzaSyB4thmejj_kD94muPhliS5XWWPmYD-PwKE';
+const API_KEY = import.meta.env.VITE_GEMINI_KEY;
 
 const SmartAdvisor = ({ quotes = [], materials = [], dark }: any) => {
   

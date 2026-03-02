@@ -61,7 +61,8 @@ const Dashboard = ({ quotes = [], materials = [], dark, onRefresh }: any) => {
         // Por Cobrar: Deuda generada este mes
         porCobrar: monthlyQuotes.filter((q: any) => !IGNORE_DEBT_STATES.includes(q.estado) && q.saldo_pendiente > 0).reduce((acc: number, q: any) => acc + (q.saldo_pendiente || 0), 0),
         enProduccion: monthlyQuotes.filter((q: any) => q.estado === 'En Producción').length,
-        count: ventasReales.length 
+        count: ventasReales.length,
+ivaMes: Math.round(ventasReales.reduce((acc: number, q: any) => acc + (q.neto_total || 0), 0) * 0.19), 
     };
   }, [monthlyQuotes]);
 
@@ -120,7 +121,8 @@ const Dashboard = ({ quotes = [], materials = [], dark, onRefresh }: any) => {
       </div>
 
       <KpiGrid data={kpiData} dark={dark} />
-      
+      <div className="mt-2 mb-2">
+
       <div className="mt-2 mb-8">
         <h3 className={`font-bold text-lg mb-4 flex items-center gap-2 ${dark ? 'text-white' : 'text-slate-800'}`}>
             <Lightbulb size={20} className="text-yellow-400 fill-yellow-400/20"/> Sugerencias IA
@@ -129,7 +131,7 @@ const Dashboard = ({ quotes = [], materials = [], dark, onRefresh }: any) => {
         <SmartAdvisor quotes={monthlyQuotes} materials={materials} dark={dark} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      (ya está bien, el espacio viene de arriba)
         <div className={`lg:col-span-2 p-8 rounded-3xl ${dark ? 'bg-[#111827]/60 border-white/5' : 'bg-white border-slate-100'} border shadow-sm`}>
           <div className="flex justify-between items-center mb-8"><h3 className={`font-bold text-lg ${dark?'text-white':'text-slate-800'}`}>Tendencia Anual</h3></div>
           <div className="h-[300px] w-full"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData}><defs><linearGradient id="colorVentas" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4}/><stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke={dark ? '#334155' : '#e2e8f0'} vertical={false} opacity={0.4} /><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: dark ? '#94a3b8' : '#64748b', fontSize: 11}} dy={10} /><YAxis axisLine={false} tickLine={false} tick={{fill: dark ? '#94a3b8' : '#64748b', fontSize: 11}} tickFormatter={(val) => `$${val/1000}k`} /><Tooltip contentStyle={{backgroundColor: dark ? '#0f172a' : '#fff', borderRadius: '12px'}} /><Area type="monotone" dataKey="ventas" stroke="#06b6d4" strokeWidth={3} fillOpacity={1} fill="url(#colorVentas)" /></AreaChart></ResponsiveContainer></div>
