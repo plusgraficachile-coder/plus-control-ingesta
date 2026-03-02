@@ -1,21 +1,21 @@
-import { useEffect } from 'react'; // ← ASEGURAR QUE ESTÉ
+import { useEffect } from 'react';
 import { Toaster } from 'sonner';
-import { Loader } from 'lucide-react';
 
 // Hooks y Servicios
 import { useAppLogic } from './hooks/useAppLogic';
 import { quoteService } from './services/quoteService';
 
 // Componentes
+import ErrorBoundary from './components/ErrorBoundary';
 import TablaProveedores from './components/Dashboard/TablaProveedores';
 import DashboardIVA from './components/Dashboard/DashboardIVA';
 import LoginScreen from './components/LoginScreen';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
-import QuoteManager from "./components/QuoteManager"; 
-import ProductManager from './components/ProductManager'; 
-import ClientManager from './components/ClientManager'; 
-import Settings from './components/Settings'; 
+import QuoteManager from "./components/QuoteManager";
+import ProductManager from './components/ProductManager';
+import ClientManager from './components/ClientManager';
+import Settings from './components/Settings';
 import ProductionKanban from './components/ProductionBoard';
 import RadarDeNegocios from './components/RadarDeNegocios/RadarDeNegocios';
 import { RadarDesk } from './components/RadarDeNegocios/RadarDesk';
@@ -90,110 +90,130 @@ function App() {
     switch (view) {
       case 'radar-desk':
         return (
-          <div className="animate-slide-in">
-            <RadarDesk userId={session?.user?.id || ''} dark={darkMode} />
-          </div>
+          <ErrorBoundary moduleName="Escritorio de Validación">
+            <div className="animate-slide-in">
+              <RadarDesk userId={session?.user?.id || ''} dark={darkMode} />
+            </div>
+          </ErrorBoundary>
         );
 
       case 'radar':
         return (
-          <div className="animate-slide-in">
-            <RadarDeNegocios
-              supabaseUrl={import.meta.env.VITE_SUPABASE_URL}
-              supabaseKey={import.meta.env.VITE_SUPABASE_ANON_KEY}
-              userId={session?.user?.id || ''}
-              dark={darkMode}
-            />
-          </div>
+          <ErrorBoundary moduleName="Radar de Negocios">
+            <div className="animate-slide-in">
+              <RadarDeNegocios
+                supabaseUrl={import.meta.env.VITE_SUPABASE_URL}
+                supabaseKey={import.meta.env.VITE_SUPABASE_ANON_KEY}
+                userId={session?.user?.id || ''}
+                dark={darkMode}
+              />
+            </div>
+          </ErrorBoundary>
         );
 
       case 'finanzas':
         return (
-          <div className="space-y-6 animate-slide-in">
-            <div className="pg-card border-l-4 border-pg-primary">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-pg-primary to-pg-cyan 
-                                flex items-center justify-center">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                          d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-pg-text">
-                    Control de Gastos e IVA
-                  </h2>
-                  <p className="text-sm text-pg-muted">
-                    Inteligencia de compras • Periodo actual
-                  </p>
+          <ErrorBoundary moduleName="Finanzas">
+            <div className="space-y-6 animate-slide-in">
+              <div className="pg-card border-l-4 border-pg-primary">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-pg-primary to-pg-cyan
+                                  flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-pg-text">
+                      Control de Gastos e IVA
+                    </h2>
+                    <p className="text-sm text-pg-muted">
+                      Inteligencia de compras • Periodo actual
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <DashboardIVA />
-              <div className="lg:col-span-2">
-                <TablaProveedores />
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <DashboardIVA />
+                <div className="lg:col-span-2">
+                  <TablaProveedores />
+                </div>
               </div>
             </div>
-          </div>
+          </ErrorBoundary>
         );
 
       case 'dashboard':
         return (
-          <div className="animate-slide-in">
-            <Dashboard quotes={quotes} materials={materials} dark={darkMode} onRefresh={fetchData} />
-          </div>
+          <ErrorBoundary moduleName="Dashboard">
+            <div className="animate-slide-in">
+              <Dashboard quotes={quotes} materials={materials} dark={darkMode} onRefresh={fetchData} />
+            </div>
+          </ErrorBoundary>
         );
 
       case 'quotes':
         return (
-          <div className="animate-slide-in">
-            <QuoteManager 
-              quotes={quotes}
-              catalogs={{ materiales: materials, clientes: clients }} 
-              onSave={handleSaveQuote}
-              onDelete={handleDeleteQuote}
-              onStatusChange={handleStatusChange}
-              dark={darkMode}
-            />
-          </div>
+          <ErrorBoundary moduleName="Cotizaciones">
+            <div className="animate-slide-in">
+              <QuoteManager
+                quotes={quotes}
+                catalogs={{ materiales: materials, clientes: clients }}
+                onSave={handleSaveQuote}
+                onDelete={handleDeleteQuote}
+                onStatusChange={handleStatusChange}
+                dark={darkMode}
+              />
+            </div>
+          </ErrorBoundary>
         );
 
       case 'production':
         return (
-          <div className="animate-slide-in">
-            <ProductionKanban quotes={quotes} onStatusChange={handleStatusChange} dark={darkMode} />
-          </div>
+          <ErrorBoundary moduleName="Producción Kanban">
+            <div className="animate-slide-in">
+              <ProductionKanban quotes={quotes} onStatusChange={handleStatusChange} dark={darkMode} />
+            </div>
+          </ErrorBoundary>
         );
 
       case 'materiales':
       case 'products':
         return (
-          <div className="animate-slide-in">
-            <ProductManager materials={materials} dark={darkMode} onRefresh={fetchData} />
-          </div>
+          <ErrorBoundary moduleName="Materiales">
+            <div className="animate-slide-in">
+              <ProductManager materials={materials} dark={darkMode} onRefresh={fetchData} />
+            </div>
+          </ErrorBoundary>
         );
 
       case 'clients':
         return (
-          <div className="animate-slide-in">
-            <ClientManager clients={clients} dark={darkMode} onRefresh={fetchData} />
-          </div>
+          <ErrorBoundary moduleName="Clientes">
+            <div className="animate-slide-in">
+              <ClientManager clients={clients} dark={darkMode} onRefresh={fetchData} />
+            </div>
+          </ErrorBoundary>
         );
 
       case 'settings':
         return (
-          <div className="animate-slide-in">
-            <Settings dark={darkMode} session={session} discountRules={discountRules} onRefresh={fetchData} />
-          </div>
+          <ErrorBoundary moduleName="Configuración">
+            <div className="animate-slide-in">
+              <Settings dark={darkMode} session={session} discountRules={discountRules} onRefresh={fetchData} />
+            </div>
+          </ErrorBoundary>
         );
 
       default:
         return (
-          <div className="animate-slide-in">
-            <Dashboard quotes={quotes} materials={materials} dark={darkMode} onRefresh={fetchData} />
-          </div>
+          <ErrorBoundary moduleName="Dashboard">
+            <div className="animate-slide-in">
+              <Dashboard quotes={quotes} materials={materials} dark={darkMode} onRefresh={fetchData} />
+            </div>
+          </ErrorBoundary>
         );
     }
   };
