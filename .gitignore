@@ -1,3 +1,6 @@
+# Claude internal tooling
+.claude/
+
 # Env files — NUNCA subir al repo
 .env
 .env.local
