@@ -142,7 +142,25 @@ async function processDetail(codigo, debugCollector = null) {
 
   // --- MODO DEBUG: recolectar regiones y montos sin filtrar ---
   if (DEBUG && debugCollector !== null) {
-    const region = detail.Comprador?.Region || 'SIN_REGION';
+    // Primera vez: imprimir estructura completa del detalle para detectar campos reales
+    if (debugCollector.length === 0) {
+      console.log('\n   🔬 ESTRUCTURA COMPLETA DEL PRIMER DETALLE:');
+      console.log(JSON.stringify(detail, null, 2).substring(0, 2000));
+      console.log('\n   🔑 Claves en detail.Comprador:', JSON.stringify(Object.keys(detail.Comprador || {})));
+    }
+
+    // Buscar región en distintos campos posibles
+    const regionCandidatos = [
+      detail.Comprador?.Region,
+      detail.Comprador?.RegionUnidad,
+      detail.Comprador?.RegionOrganismo,
+      detail.Comprador?.NombreRegion,
+      detail.UnidadCompra?.Region,
+      detail.Region,
+      detail.RegionUnidad,
+    ].filter(Boolean);
+
+    const region = regionCandidatos[0] || 'SIN_REGION';
     const monto  = parseInt(detail.MontoEstimado) || 0;
     const regionNorm = normalizeText(region);
     _regionesSeen.add(region);
@@ -158,8 +176,8 @@ async function processDetail(codigo, debugCollector = null) {
     return false; // en debug no guardamos nada
   }
 
-  // Filtro: Región
-  const regionNorm = normalizeText(detail.Comprador?.Region || '');
+  // Filtro: Región (campo correcto es RegionUnidad, no Region)
+  const regionNorm = normalizeText(detail.Comprador?.RegionUnidad || '');
   if (!regionNorm.includes(normalizeText(CONFIG.REGION_TARGET))) return false;
 
   // Filtro: Monto
@@ -175,7 +193,7 @@ async function processDetail(codigo, debugCollector = null) {
     .upsert({
       rut:          rutOrg,
       razon_social: detail.Comprador?.NombreOrganismo,
-      region:       detail.Comprador?.Region,
+      region:       detail.Comprador?.RegionUnidad,
       updated_at:   new Date().toISOString(),
     }, { onConflict: 'rut' })
     .select('id')
