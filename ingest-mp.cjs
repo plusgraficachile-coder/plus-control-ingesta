@@ -25,9 +25,10 @@ const CONFIG = {
   REGION_TARGET:   'ARAUCAN',   // Raíz común: Araucanía / Araucania / De la Araucanía
   MONTO_MINIMO:    500000,
   DIAS_ATRAS:      DEBUG ? 5 : 2,   // En debug busca 5 días atrás para tener más datos
-  CONCURRENCIA:    5,
-  MAX_RETRIES:     5,
-  DEBUG_SAMPLE:    15,              // En debug: detalla solo los primeros N items
+  CONCURRENCIA:    8,           // Más peticiones en paralelo
+  MAX_RETRIES:     2,           // Solo 2 reintentos (era 5 → demasiado lento)
+  BACKOFF_BASE:    800,         // ms base de espera (era 2000)
+  DEBUG_SAMPLE:    15,
 };
 
 // --- 2. VALIDACIÓN FAIL-FAST ---
@@ -81,7 +82,7 @@ async function fetchWithRetry(url, params, context = '') {
         console.error(`❌ Error definitivo en ${context}. Saltando.`);
         return null;
       }
-      const delay = 2000 * Math.pow(2, i) + Math.floor(Math.random() * 1000);
+      const delay = CONFIG.BACKOFF_BASE * Math.pow(2, i) + Math.floor(Math.random() * 500);
       await wait(delay);
     }
   }
@@ -282,6 +283,10 @@ async function main() {
     // En debug: procesar solo una muestra para no hacer demasiadas peticiones
     const sample = DEBUG ? listado.slice(0, CONFIG.DEBUG_SAMPLE) : listado;
 
+    // Circuit breaker: si los primeros 10 detalles fallan todos, saltar el día
+    let consecutiveFails = 0;
+    let capturadosHoy    = 0;
+
     // Procesar en batches con concurrencia controlada
     for (let i = 0; i < sample.length; i += CONFIG.CONCURRENCIA) {
       const batch = sample.slice(i, i + CONFIG.CONCURRENCIA);
@@ -293,8 +298,24 @@ async function main() {
             : Promise.resolve(false);
         })
       );
-      totalCapturados += results.filter(Boolean).length;
-      if (!DEBUG && i % 25 === 0) process.stdout.write('.');
+      const hits = results.filter(Boolean).length;
+      totalCapturados += hits;
+      capturadosHoy   += hits;
+
+      // Circuit breaker: si después de 10 items no hay ningún éxito, asumir API caída
+      if (i === 0 && hits === 0 && !DEBUG) {
+        consecutiveFails++;
+        if (consecutiveFails >= 2) {
+          console.warn(`   ⚡ Circuit breaker: API inestable para ${dateStr}, saltando día.`);
+          break;
+        }
+      } else {
+        consecutiveFails = 0;
+      }
+
+      if (!DEBUG && i % 50 === 0 && i > 0) {
+        process.stdout.write(`\n   ↳ ${i}/${sample.length} revisadas, ${capturadosHoy} leads hoy`);
+      }
     }
   }
 
