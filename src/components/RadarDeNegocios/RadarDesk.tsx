@@ -139,8 +139,11 @@ Responde SOLO con este JSON (sin markdown):
 
       const data = await res.json();
       const raw  = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-      const clean = raw.replace(/```json|```/g, '').trim();
-      const analysis = JSON.parse(clean);
+
+      // Extraer el bloque JSON con regex (más robusto que limpiar backticks)
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error(`Gemini no devolvió JSON válido. Respuesta: ${raw.substring(0, 200)}`);
+      const analysis = JSON.parse(jsonMatch[0]);
 
       setFormData(prev => ({
         ...prev,
