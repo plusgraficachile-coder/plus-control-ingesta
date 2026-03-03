@@ -108,22 +108,22 @@ export const RadarDesk = ({ userId, dark = false }: { userId: string; dark?: boo
         ? new Date(selected.fecha_cierre).toLocaleDateString('es-CL')
         : 'sin fecha';
 
-      const prompt = `Eres un estratega comercial de Plus Grafica, imprenta en Temuco especializada en gráfica corporativa.
-Analiza esta licitación pública de Mercado Público:
+      const prompt = `Analiza esta oportunidad de negocio para una empresa de impresión gráfica en Chile y responde ÚNICAMENTE con el JSON indicado, sin texto adicional ni markdown.
 
-- Organismo: ${org}
-- Región: ${region}
-- Licitación: ${selected.nombre}
-- Monto estimado: $${monto} CLP
-- Cierre: ${cierre}
-- Score automático: ${selected.score}/100
+Datos:
+- Cliente potencial: ${org} (${region})
+- Descripción: ${selected.nombre}
+- Presupuesto referencial: $${monto} CLP
+- Fecha límite: ${cierre}
+- Score algorítmico: ${selected.score}/100
 
-Responde SOLO con este JSON (sin markdown):
-{
-  "ticket_sugerido": numero_entero_clp,
-  "gap_detectado": "argumento_de_venta_persuasivo_en_una_frase",
-  "impacto_visual": numero_del_1_al_10
-}`;
+Responde con este JSON exacto:
+{"ticket_sugerido": 0, "gap_detectado": "texto", "impacto_visual": 5}
+
+Donde:
+- ticket_sugerido: monto entero en CLP que la empresa podría cotizar
+- gap_detectado: una frase con el argumento de venta principal
+- impacto_visual: número entero del 1 al 10`;
 
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
@@ -132,17 +132,27 @@ Responde SOLO con este JSON (sin markdown):
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: 256 }
+            generationConfig: { temperature: 0.3, maxOutputTokens: 512 }
           })
         }
       );
 
       const data = await res.json();
-      const raw  = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
-      // Extraer el bloque JSON con regex (más robusto que limpiar backticks)
+      // Detectar bloqueo por safety filters u otros errores de API
+      if (data.error) throw new Error(`API error ${data.error.code}: ${data.error.message}`);
+      if (!data.candidates?.length) {
+        const razon = data.promptFeedback?.blockReason ?? 'sin candidatos';
+        throw new Error(`Gemini bloqueó la respuesta: ${razon}`);
+      }
+
+      const raw = data.candidates[0]?.content?.parts?.[0]?.text ?? '';
+      const finishReason = data.candidates[0]?.finishReason ?? '';
+      if (!raw || finishReason === 'SAFETY') throw new Error(`Gemini bloqueó por seguridad (${finishReason})`);
+
+      // Extraer el bloque JSON con regex
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error(`Gemini no devolvió JSON válido. Respuesta: ${raw.substring(0, 200)}`);
+      if (!jsonMatch) throw new Error(`Respuesta sin JSON: ${raw.substring(0, 300)}`);
       const analysis = JSON.parse(jsonMatch[0]);
 
       setFormData(prev => ({
