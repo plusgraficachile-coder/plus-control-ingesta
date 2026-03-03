@@ -28,4 +28,4 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }} 
           MP_TICKET: ${{ secrets.MP_TICKET }}
-        run: node ingest-mp.js
+        run: node ingest-mp.cjs
