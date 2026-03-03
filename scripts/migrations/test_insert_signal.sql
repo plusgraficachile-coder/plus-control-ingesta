@@ -3,24 +3,17 @@
 -- Ejecutar en Supabase SQL Editor DESPUÉS de correr migración 003
 -- ============================================================
 
--- Paso 1: Asegurarnos de tener una organización de prueba
-INSERT INTO public.organizations (rut, razon_social, region, updated_at)
-VALUES (
-  '99999999-9',
-  'Municipalidad de Temuco (TEST)',
-  'La Araucanía',
-  NOW()
-)
-ON CONFLICT (rut) DO UPDATE SET updated_at = NOW()
-RETURNING id;
+-- Paso 1: Organización de prueba (sin updated_at, que no existe)
+INSERT INTO public.organizations (rut, razon_social, region)
+VALUES ('99999999-9', 'Municipalidad de Temuco (TEST)', 'La Araucanía')
+ON CONFLICT (rut) DO NOTHING;
 
--- Paso 2: Insertar tipo de señal
-INSERT INTO public.signal_types (name, source)
-VALUES ('licitacion_publica', 'MercadoPublico')
+-- Paso 2: Tipo de señal
+INSERT INTO public.signal_types (name, source, base_weight, display_name, category)
+VALUES ('licitacion_publica', 'MercadoPublico', 70, 'Licitación Pública', 'financial_trigger')
 ON CONFLICT (name) DO NOTHING;
 
--- Paso 3: Insertar señal completa de prueba
--- (Reemplaza <ORG_ID> con el id que devolvió el paso 1)
+-- Paso 3: Señal completa de prueba
 WITH org AS (
   SELECT id FROM public.organizations WHERE rut = '99999999-9'
 ),
@@ -49,12 +42,12 @@ SELECT
   NOW() + INTERVAL '7 days',
   NOW(),
   'raw',
-  '{"CodigoExternal":"TEST-2026-001","Nombre":"Adquisición de equipos de impresión digital","MontoEstimado":"8500000","Tipo":"LE","FechaCierre":"' || (NOW() + INTERVAL '7 days')::text || '","Comprador":{"RutUnidad":"99999999-9","NombreOrganismo":"Municipalidad de Temuco (TEST)","RegionUnidad":"La Araucanía"}}'::jsonb
+  '{"CodigoExternal":"TEST-2026-001","Nombre":"Adquisición de equipos de impresión digital","MontoEstimado":"8500000","Tipo":"LE","Comprador":{"RutUnidad":"99999999-9","NombreOrganismo":"Municipalidad de Temuco (TEST)","RegionUnidad":"La Araucanía"}}'::jsonb
 FROM org, stype
 ON CONFLICT (external_code) DO UPDATE SET
-  monto = EXCLUDED.monto,
-  score = EXCLUDED.score,
-  capturado_at = NOW();
+  nombre = EXCLUDED.nombre,
+  monto  = EXCLUDED.monto,
+  score  = EXCLUDED.score;
 
 -- Verificar resultado
 SELECT

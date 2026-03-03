@@ -205,11 +205,17 @@ async function processDetail(codigo, debugCollector = null) {
     return false;
   }
 
-  // B. Upsert Tipo de Señal
+  // B. Upsert Tipo de Señal (base_weight y category son NOT NULL)
   const { data: type } = await supabase
     .from('signal_types')
     .upsert(
-      { name: 'licitacion_publica', source: 'MercadoPublico' },
+      {
+        name:         'licitacion_publica',
+        source:       'MercadoPublico',
+        base_weight:  70,
+        category:     'financial_trigger',
+        display_name: 'Licitación Pública',
+      },
       { onConflict: 'name' }
     )
     .select('id')
