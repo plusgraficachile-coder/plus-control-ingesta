@@ -169,14 +169,15 @@ ticket_sugerido=entero CLP, gap_detectado=argumento de venta en máximo 15 palab
     }
   };
 
-  // ── Validar y pasar a siguiente etapa ────────────────────────────────────
+  // ── Validar y pasar a Radar de Negocios ──────────────────────────────────
   const handleValidar = async () => {
     if (!selected) return;
     const score_ajustado = Math.round(
       ((formData.impacto_visual + formData.nivel_corp) / 2) * 10
     );
 
-    const { error } = await supabase
+    // 1. Actualizar signals → estado 'validacion'
+    const { error: sigError } = await supabase
       .from('signals')
       .update({
         estado:          'validacion',
@@ -189,14 +190,40 @@ ticket_sugerido=entero CLP, gap_detectado=argumento de venta en máximo 15 palab
       })
       .eq('id', selected.id);
 
-    if (!error) {
-      const resto = signals.filter(s => s.id !== selected.id);
-      setSignals(resto);
-      if (resto.length > 0) seleccionar(resto[0]);
-      else setSelected(null);
-    } else {
-      alert(`Error al validar: ${error.message}`);
-    }
+    if (sigError) { alert(`Error al validar: ${sigError.message}`); return; }
+
+    // 2. Insertar en leads_estrategicos con origen MP
+    const diasCierre = selected.fecha_cierre
+      ? Math.ceil((new Date(selected.fecha_cierre).getTime() - Date.now()) / 86400000)
+      : 3;
+    const urgencia = diasCierre <= 3 ? 5 : diasCierre <= 7 ? 4 : diasCierre <= 14 ? 3 : 2;
+
+    const { error: leadError } = await supabase
+      .from('leads_estrategicos')
+      .upsert({
+        folio:           `MP-${selected.external_code}`,
+        nombre_negocio:  selected.organizations?.razon_social ?? 'Organismo Público',
+        rubro:           'Licitación Mercado Público',
+        ciudad:          selected.organizations?.region ?? 'La Araucanía',
+        iv:              formData.impacto_visual,
+        nc:              formData.nivel_corp,
+        score_total:     score_ajustado,
+        capacidad_pago:  selected.monto >= 5000000 ? 'ALTA' : selected.monto >= 1000000 ? 'MEDIA' : 'BAJA',
+        urgencia_nivel:  urgencia,
+        estado:          'validacion',
+        ticket_estimado: formData.ticket,
+        gap_coherencia:  formData.observacion,
+        argumento_venta: selected.nombre,
+        auditado_at:     new Date().toISOString(),
+      }, { onConflict: 'folio' });
+
+    if (leadError) console.warn('Lead MP no insertado en Radar:', leadError.message);
+
+    // 3. Quitar de la bandeja
+    const resto = signals.filter(s => s.id !== selected.id);
+    setSignals(resto);
+    if (resto.length > 0) seleccionar(resto[0]);
+    else setSelected(null);
   };
 
   // ── Descartar ────────────────────────────────────────────────────────────

@@ -182,11 +182,18 @@ export const RadarDeNegocios: React.FC<RadarDeNegociosProps> = ({ userId, dark =
             <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: scoreColor }} />
             <span className={`text-[10px] font-mono font-bold ${t.textMuted}`}>{lead.folio}</span>
           </div>
-          {lead.score_total !== undefined && (
-            <div className="px-2 py-0.5 rounded text-[10px] font-bold text-white" style={{ backgroundColor: scoreColor }}>
-              {lead.score_total}
-            </div>
-          )}
+          <div className="flex items-center gap-1.5">
+            {lead.folio?.startsWith('MP-') && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wide bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                MP
+              </span>
+            )}
+            {lead.score_total !== undefined && (
+              <div className="px-2 py-0.5 rounded text-[10px] font-bold text-white" style={{ backgroundColor: scoreColor }}>
+                {lead.score_total}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Nombre */}
