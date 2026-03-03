@@ -206,9 +206,9 @@ export const RadarDeNegocios: React.FC<RadarDeNegociosProps> = ({ userId, dark =
 
         {/* Indicadores */}
         <div className="flex items-center gap-2 flex-wrap">
-          {lead.ticket_estimado && (
+          {lead.ticket_estimado != null && Number(lead.ticket_estimado) > 0 && (
             <span className="text-emerald-500 text-xs font-bold">
-              {formatearMoneda(lead.ticket_estimado)}
+              {formatearMoneda(Number(lead.ticket_estimado))}
             </span>
           )}
           <span className="text-xs">{getUrgenciaEmoji(lead.urgencia_nivel)}</span>

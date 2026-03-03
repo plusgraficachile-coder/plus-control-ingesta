@@ -217,7 +217,7 @@ ticket_sugerido=entero CLP, gap_detectado=argumento de venta en máximo 15 palab
         auditado_at:     new Date().toISOString(),
       }, { onConflict: 'folio' });
 
-    if (leadError) console.warn('Lead MP no insertado en Radar:', leadError.message);
+    if (leadError) alert(`Error insertando en Radar: ${leadError.message}`);
 
     // 3. Quitar de la bandeja
     const resto = signals.filter(s => s.id !== selected.id);
