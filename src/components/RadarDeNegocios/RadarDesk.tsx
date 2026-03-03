@@ -108,34 +108,35 @@ export const RadarDesk = ({ userId, dark = false }: { userId: string; dark?: boo
         ? new Date(selected.fecha_cierre).toLocaleDateString('es-CL')
         : 'sin fecha';
 
-      const prompt = `Analiza esta oportunidad de negocio para una empresa de impresión gráfica en Chile y responde ÚNICAMENTE con el JSON indicado, sin texto adicional ni markdown.
+      const prompt = `Responde SOLO con este JSON, sin texto adicional:
+{"ticket_sugerido": 0, "gap_detectado": "max 15 palabras", "impacto_visual": 5}
 
-Datos:
-- Cliente potencial: ${org} (${region})
-- Descripción: ${selected.nombre}
-- Presupuesto referencial: $${monto} CLP
-- Fecha límite: ${cierre}
-- Score algorítmico: ${selected.score}/100
+Licitación: ${selected.nombre}
+Cliente: ${org}, ${region}
+Presupuesto: $${monto} CLP. Cierre: ${cierre}.
+Empresa oferente: imprenta gráfica en Temuco.
+ticket_sugerido=entero CLP, gap_detectado=argumento de venta en máximo 15 palabras, impacto_visual=1-10.`;
 
-Responde con este JSON exacto:
-{"ticket_sugerido": 0, "gap_detectado": "texto", "impacto_visual": 5}
-
-Donde:
-- ticket_sugerido: monto entero en CLP que la empresa podría cotizar
-- gap_detectado: una frase con el argumento de venta principal
-- impacto_visual: número entero del 1 al 10`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 512 }
+            generationConfig: {
+              temperature: 0.3,
+              maxOutputTokens: 8192,
+              responseMimeType: 'application/json'
+            }
           })
         }
       );
+      clearTimeout(timeout);
 
       const data = await res.json();
 
