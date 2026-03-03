@@ -23,8 +23,8 @@ const CONFIG = {
   MP_TICKET:       process.env.MP_TICKET,
   API_URL:         'https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json',
   REGION_TARGET:   'ARAUCAN',   // Raíz común: Araucanía / Araucania / De la Araucanía
-  MONTO_MINIMO:    500000,
-  DIAS_ATRAS:      DEBUG ? 5 : 2,   // En debug busca 5 días atrás para tener más datos
+  MONTO_MINIMO:    parseInt(process.env.MONTO_MINIMO) || 500000,
+  DIAS_ATRAS:      parseInt(process.env.DIAS_ATRAS) || (DEBUG ? 5 : 2),
   CONCURRENCIA:    8,           // Más peticiones en paralelo
   MAX_RETRIES:     2,           // Solo 2 reintentos (era 5 → demasiado lento)
   BACKOFF_BASE:    800,         // ms base de espera (era 2000)
