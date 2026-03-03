@@ -15,6 +15,8 @@ const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
 
 // --- 1. CONFIGURACIÓN ---
+const DEBUG = process.env.DEBUG === 'true';  // DEBUG=true → modo diagnóstico sin Supabase
+
 const CONFIG = {
   SUPABASE_URL:    process.env.SUPABASE_URL,
   SUPABASE_KEY:    process.env.SUPABASE_SERVICE_KEY,   // Mapea con env: del YAML
@@ -22,19 +24,24 @@ const CONFIG = {
   API_URL:         'https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json',
   REGION_TARGET:   'ARAUCAN',   // Raíz común: Araucanía / Araucania / De la Araucanía
   MONTO_MINIMO:    500000,
-  DIAS_ATRAS:      2,           // Hoy + Ayer (cubre ejecuciones con delay)
-  CONCURRENCIA:    5,           // Peticiones simultáneas de detalle
-  MAX_RETRIES:     5,           // Intentos ante error 500 / red
+  DIAS_ATRAS:      DEBUG ? 5 : 2,   // En debug busca 5 días atrás para tener más datos
+  CONCURRENCIA:    5,
+  MAX_RETRIES:     5,
+  DEBUG_SAMPLE:    15,              // En debug: detalla solo los primeros N items
 };
 
 // --- 2. VALIDACIÓN FAIL-FAST ---
-if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY || !CONFIG.MP_TICKET) {
-  console.error('❌ ERROR FATAL: Faltan variables de entorno.');
-  console.error('   Requeridas: SUPABASE_URL | SUPABASE_SERVICE_KEY | MP_TICKET');
+if (!CONFIG.MP_TICKET) {
+  console.error('❌ ERROR FATAL: Falta MP_TICKET.');
+  process.exit(1);
+}
+if (!DEBUG && (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY)) {
+  console.error('❌ ERROR FATAL: Faltan SUPABASE_URL o SUPABASE_SERVICE_KEY.');
+  console.error('   (Para correr sin Supabase usa: DEBUG=true node ingest-mp.cjs)');
   process.exit(1);
 }
 
-const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, {
+const supabase = DEBUG ? null : createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, {
   auth: { persistSession: false }
 });
 
@@ -120,7 +127,10 @@ function calcularScore(detail) {
 
 // --- 5. PROCESAMIENTO DE UNA LICITACIÓN ---
 
-async function processDetail(codigo) {
+// Colector de regiones para modo debug
+const _regionesSeen = new Set();
+
+async function processDetail(codigo, debugCollector = null) {
   const data = await fetchWithRetry(
     CONFIG.API_URL,
     { codigo, ticket: CONFIG.MP_TICKET },
@@ -129,6 +139,24 @@ async function processDetail(codigo) {
 
   const detail = data?.Listado?.[0];
   if (!detail) return false;
+
+  // --- MODO DEBUG: recolectar regiones y montos sin filtrar ---
+  if (DEBUG && debugCollector !== null) {
+    const region = detail.Comprador?.Region || 'SIN_REGION';
+    const monto  = parseInt(detail.MontoEstimado) || 0;
+    const regionNorm = normalizeText(region);
+    _regionesSeen.add(region);
+    debugCollector.push({
+      codigo,
+      region,
+      regionNorm,
+      monto,
+      nombre: (detail.Nombre || '').substring(0, 60),
+      matchRegion: regionNorm.includes(normalizeText(CONFIG.REGION_TARGET)),
+      matchMonto:  monto >= CONFIG.MONTO_MINIMO,
+    });
+    return false; // en debug no guardamos nada
+  }
 
   // Filtro: Región
   const regionNorm = normalizeText(detail.Comprador?.Region || '');
@@ -196,12 +224,19 @@ async function processDetail(codigo) {
 // --- 6. ORQUESTADOR PRINCIPAL ---
 
 async function main() {
-  console.log('🚀 PLUS CONTROL — MOTOR DE INGESTA V3 (Producción)');
-  console.log(`   Región: ${CONFIG.REGION_TARGET} | Monto mínimo: $${CONFIG.MONTO_MINIMO.toLocaleString('es-CL')}`);
-  console.log(`   Días procesados: ${CONFIG.DIAS_ATRAS} | Concurrencia: ${CONFIG.CONCURRENCIA}`);
+  if (DEBUG) {
+    console.log('🔍 PLUS CONTROL — MODO DEBUG (sin escritura en Supabase)');
+    console.log(`   Buscando regiones en los últimos ${CONFIG.DIAS_ATRAS} días...`);
+    console.log(`   Muestra: ${CONFIG.DEBUG_SAMPLE} items por día`);
+  } else {
+    console.log('🚀 PLUS CONTROL — MOTOR DE INGESTA V3 (Producción)');
+    console.log(`   Región: ${CONFIG.REGION_TARGET} | Monto mínimo: $${CONFIG.MONTO_MINIMO.toLocaleString('es-CL')}`);
+    console.log(`   Días procesados: ${CONFIG.DIAS_ATRAS} | Concurrencia: ${CONFIG.CONCURRENCIA}`);
+  }
 
   let totalCapturados = 0;
   let totalRevisados  = 0;
+  const debugCollector = DEBUG ? [] : null;
 
   for (let d = 0; d < CONFIG.DIAS_ATRAS; d++) {
     const date = new Date();
@@ -219,22 +254,86 @@ async function main() {
     const listado = listData?.Listado || [];
     totalRevisados += listado.length;
     console.log(`   Items en lista: ${listado.length}`);
+    if (listado.length === 0) continue;
+
+    // En debug: muestra los campos del primer item para entender la estructura
+    if (DEBUG && debugCollector.length === 0) {
+      console.log('\n   🔎 Campos disponibles en item de lista:', Object.keys(listado[0]).join(', '));
+    }
+
+    // En debug: procesar solo una muestra para no hacer demasiadas peticiones
+    const sample = DEBUG ? listado.slice(0, CONFIG.DEBUG_SAMPLE) : listado;
 
     // Procesar en batches con concurrencia controlada
-    for (let i = 0; i < listado.length; i += CONFIG.CONCURRENCIA) {
-      const batch = listado.slice(i, i + CONFIG.CONCURRENCIA);
+    for (let i = 0; i < sample.length; i += CONFIG.CONCURRENCIA) {
+      const batch = sample.slice(i, i + CONFIG.CONCURRENCIA);
       const results = await Promise.all(
-        batch.map(item =>
-          item.CodigoExternal
-            ? processDetail(item.CodigoExternal)
-            : Promise.resolve(false)
-        )
+        batch.map(item => {
+          const codigo = item.CodigoExterno || item.CodigoExternal || item.Codigo;
+          return codigo
+            ? processDetail(codigo, debugCollector)
+            : Promise.resolve(false);
+        })
       );
       totalCapturados += results.filter(Boolean).length;
-      if (i % 25 === 0) process.stdout.write('.');
+      if (!DEBUG && i % 25 === 0) process.stdout.write('.');
     }
   }
 
+  // --- REPORTE DE DEBUG ---
+  if (DEBUG) {
+    console.log('\n\n══════════════════════════════════════════');
+    console.log('📊 DIAGNÓSTICO DE REGIONES ENCONTRADAS');
+    console.log('══════════════════════════════════════════');
+
+    if (debugCollector.length === 0) {
+      console.log('⚠️  No se obtuvieron detalles. Posibles causas:');
+      console.log('   - El ticket MP está vencido');
+      console.log('   - La API devolvió HTTP 500 en todos los reintentos');
+      console.log('   - No hay licitaciones en los últimos 5 días');
+    } else {
+      console.log(`   Detalles obtenidos: ${debugCollector.length}`);
+
+      // Regiones únicas con conteo
+      const regionCount = {};
+      for (const item of debugCollector) {
+        regionCount[item.region] = (regionCount[item.region] || 0) + 1;
+      }
+
+      console.log('\n📍 Regiones encontradas (con conteo):');
+      Object.entries(regionCount)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([region, count]) => {
+          const match = normalizeText(region).includes(normalizeText(CONFIG.REGION_TARGET));
+          console.log(`   ${match ? '✅ MATCH' : '      '} "${region}" (${count})`);
+        });
+
+      const matches = debugCollector.filter(i => i.matchRegion);
+      console.log(`\n🎯 Matches "${CONFIG.REGION_TARGET}": ${matches.length} de ${debugCollector.length}`);
+
+      if (matches.length > 0) {
+        console.log('   Ejemplos con filtro actual:');
+        matches.slice(0, 5).forEach(m =>
+          console.log(`   - $${m.monto.toLocaleString('es-CL')} | ${m.region} | ${m.nombre}`)
+        );
+      } else {
+        // Buscar variante de Araucanía en los datos
+        const arauc = Object.keys(regionCount).find(r =>
+          normalizeText(r).includes('ARAUC')
+        );
+        if (arauc) {
+          console.log(`\n💡 Se encontró región relacionada: "${arauc}"`);
+          console.log(`   Actualiza REGION_TARGET en el script a: '${normalizeText(arauc).split(' ').find(w => w.includes('ARAUC')) || 'ARAUC'}'`);
+        } else {
+          console.log('\n💡 Ninguna región contiene "ARAUC". Ver lista arriba y ajustar REGION_TARGET.');
+        }
+      }
+    }
+    console.log('\n══════════════════════════════════════════\n');
+    return;
+  }
+
+  // --- REPORTE DE PRODUCCIÓN ---
   console.log('\n');
   console.log('🏁 EJECUCIÓN FINALIZADA');
   console.log(`   Licitaciones revisadas : ${totalRevisados}`);
