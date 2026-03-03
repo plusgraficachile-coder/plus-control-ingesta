@@ -198,23 +198,26 @@ ticket_sugerido=entero CLP, gap_detectado=argumento de venta en máximo 15 palab
       : 3;
     const urgencia = diasCierre <= 3 ? 5 : diasCierre <= 7 ? 4 : diasCierre <= 14 ? 3 : 2;
 
+    // Folio numérico secuencial (constraint: ^LEAD-[0-9]{3,}$)
+    const folioNum = Date.now().toString().slice(-7); // 7 dígitos únicos
     const { error: leadError } = await supabase
       .from('leads_estrategicos')
-      .upsert({
-        folio:           `MP-${selected.external_code}`,
-        nombre_negocio:  selected.organizations?.razon_social ?? 'Organismo Público',
-        rubro:           'Licitación Mercado Público',
-        ciudad:          selected.organizations?.region ?? 'La Araucanía',
-        iv:              formData.impacto_visual,
-        nc:              formData.nivel_corp,
-        capacidad_pago:  selected.monto >= 5000000 ? 'ALTA' : selected.monto >= 1000000 ? 'MEDIA' : 'BAJA',
-        urgencia_nivel:  urgencia,
-        estado:          'validacion',
-        ticket_estimado: formData.ticket,
-        gap_coherencia:  formData.observacion,
-        argumento_venta: selected.nombre,
-        auditado_at:     new Date().toISOString(),
-      }, { onConflict: 'folio' });
+      .insert({
+        folio:            `LEAD-${folioNum}`,
+        nombre_negocio:   selected.organizations?.razon_social ?? 'Organismo Público',
+        rubro:            'Licitación Mercado Público',
+        ciudad:           selected.organizations?.region ?? 'La Araucanía',
+        iv:               formData.impacto_visual,
+        nc:               formData.nivel_corp,
+        capacidad_pago:   selected.monto >= 5000000 ? 'ALTA' : selected.monto >= 1000000 ? 'MEDIA' : 'BAJA',
+        urgencia_nivel:   urgencia,
+        estado:           'validacion',
+        ticket_estimado:  formData.ticket,
+        gap_coherencia:   formData.observacion,
+        argumento_venta:  selected.nombre,
+        notas_iniciales:  `MP:${selected.external_code}`,
+        auditado_at:      new Date().toISOString(),
+      });
 
     if (leadError) alert(`Error insertando en Radar: ${leadError.message}`);
 

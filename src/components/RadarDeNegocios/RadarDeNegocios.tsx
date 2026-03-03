@@ -183,7 +183,7 @@ export const RadarDeNegocios: React.FC<RadarDeNegociosProps> = ({ userId, dark =
             <span className={`text-[10px] font-mono font-bold ${t.textMuted}`}>{lead.folio}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            {lead.folio?.startsWith('MP-') && (
+            {lead.rubro === 'Licitación Mercado Público' && (
               <span className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wide bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
                 MP
               </span>
