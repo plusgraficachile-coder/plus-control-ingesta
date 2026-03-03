@@ -207,7 +207,6 @@ ticket_sugerido=entero CLP, gap_detectado=argumento de venta en máximo 15 palab
         ciudad:          selected.organizations?.region ?? 'La Araucanía',
         iv:              formData.impacto_visual,
         nc:              formData.nivel_corp,
-        score_total:     score_ajustado,
         capacidad_pago:  selected.monto >= 5000000 ? 'ALTA' : selected.monto >= 1000000 ? 'MEDIA' : 'BAJA',
         urgencia_nivel:  urgencia,
         estado:          'validacion',
