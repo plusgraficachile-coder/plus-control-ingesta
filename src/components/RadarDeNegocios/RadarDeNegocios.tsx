@@ -3,8 +3,9 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../../lib/supabase'; 
+import { supabase } from '../../lib/supabase';
 import { WizardAuditoriaTactica } from './WizardAuditoriaTactica';
+import { CotizacionExpress } from './CotizacionExpress';
 
 // ============================================================================
 // TIPOS
@@ -51,7 +52,8 @@ export const RadarDeNegocios: React.FC<RadarDeNegociosProps> = ({ userId, dark =
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [leadParaAuditar, setLeadParaAuditar] = useState<Lead | null>(null);
+  const [leadParaAuditar, setLeadParaAuditar]     = useState<Lead | null>(null);
+  const [leadParaCotizar, setLeadParaCotizar]     = useState<Lead | null>(null);
 
   // ============================================================================
   // TOKENS DE COLOR — estilo BCI en claro, oscuro igual que antes
@@ -416,7 +418,7 @@ export const RadarDeNegocios: React.FC<RadarDeNegociosProps> = ({ userId, dark =
                 ✉️ Email
               </button>
               <button className="w-full bg-rose-600 hover:bg-rose-500 text-white py-2.5 rounded-xl font-bold text-sm transition-colors"
-                onClick={() => alert('PDF - proximamente')}>
+                onClick={() => { setLeadParaCotizar(selectedLead); }}>
                 📄 Generar PDF
               </button>
               <button className="w-full bg-violet-600 hover:bg-violet-500 text-white py-2.5 rounded-xl font-bold text-sm transition-colors"
@@ -425,6 +427,24 @@ export const RadarDeNegocios: React.FC<RadarDeNegociosProps> = ({ userId, dark =
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Cotización Express — panel lateral sobre el de detalles */}
+      {leadParaCotizar && (
+        <div className={`fixed right-0 top-0 h-full w-96 border-l p-6 overflow-y-auto shadow-2xl z-50 ${t.panelBg}`}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className={`text-xl font-bold ${t.text}`}>{leadParaCotizar.nombre_negocio}</h2>
+          </div>
+          <CotizacionExpress
+            lead={leadParaCotizar}
+            dark={dark}
+            onCerrar={() => setLeadParaCotizar(null)}
+            onGenerarPDF={(costo, precio, margen) => {
+              setLeadParaCotizar(null);
+              alert(`✅ Rentabilidad validada\nCosto: $${costo.toLocaleString('es-CL')}\nPrecio: $${precio.toLocaleString('es-CL')}\nMargen: ${margen.toFixed(1)}%\n\nGeneración de PDF en desarrollo.`);
+            }}
+          />
         </div>
       )}
 
